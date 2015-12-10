@@ -1,0 +1,4 @@
+16F88,426,263,20
+Reminder! Line [29]	In file [C:\PROJELER\DTMF\DTMF.BAS]	*** Ensure that all fuses are placed in the Config list, as devices have differing default settings! ***
+	PROGRAM COMPILED OK. 426 Words used from a possible 4096
+	263 Variables used in the 16F88 from a possible 368

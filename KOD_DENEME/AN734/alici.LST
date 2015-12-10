@@ -1,0 +1,1525 @@
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ;port B display keyboard
+                      00002 
+                      00003 ; PB0 ----   RS232 TX           
+                      00004 
+                      00005 ; PB1 ----              
+                      00006 
+                      00007 ; PB2 ----              
+                      00008 
+                      00009 ; PB3 ----      D0      
+                      00010 
+                      00011 ; PB4 ----      D1      
+                      00012 
+                      00013 ; PB5 ----      D2      
+                      00014 
+                      00015 ; PB6 ----      D3
+                      00016 
+                      00017 ; PB7 ----      DAT
+                      00018 
+                      00019 
+                      00020 
+                      00021 ;porta
+                      00022 
+                      00023 ;PA0            analog batt. voltaj giriþi VCC/2 olarak
+                      00024 
+                      00025 ;PA1    
+                      00026 
+                      00027 ;PA2            alýcý telsizi besleme devresi aktif "H"
+                      00028 
+                      00029 ;PA3            
+                      00030 
+                      00031 ;PA4            8870 OE aktif "H"
+                      00032 
+                      00033 
+                      00034 
+                      00035 ;  DTMF                                                                 MESAJ ascii
+                      00036 
+                      00037 ;*1210B#        :TRANS KAPAT                    :       @1210B#
+                      00038 
+                      00039 ;*12115#        :TRANS AC LOW PWR       :       @12115#
+                      00040 
+                      00041 ;*12126#        :TRANS AC MID PWR       :       @12126#
+                      00042 
+                      00043 ;*12137#        :TRANS AC HIG PWR       :       @12137#
+                      00044 
+                      00045 ;*12148#        :SURE SET 1                     :       @12148#
+                      00046 
+                      00047 ;*12159#        :SURE SET 2                     :       @12159#
+                      00048 
+                      00049 ;*12160#        :SURESIZ SET                    ;       @12160#
+                      00050 
+                      00051 ;*1217*#        :BEACON KAPAT           :       @1217*#
+                      00052 
+                      00053 ;*1218##        :BEACON AC                      :       @1218##
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00054 
+                      00055 
+                      00056 
+                      00057 
+                      00058 
+                      00059 
+                      00060 
+                      00061   LIST      p=16F88                     ; list directive to define processor
+                      00062 
+                      00063     #INCLUDE <P16F88.INC>               ; processor specific variable definitions
+                      00001         LIST
+                      00002 ; P16F88.INC  Standard Header File, Version 1.00    Microchip Technology, Inc.
+                      00400         LIST
+                      00064 
+                      00065 ;------------------------------------------------------------------------------ 
+                      00066 
+                      00067 
+                      00068 
+2007   3F61           00069     __CONFIG    _CONFIG1, _CP_OFF & _DEBUG_OFF & _WRT_PROTECT_OFF & _CPD_OFF & _LVP_OFF & _BODEN_ON & _M
+                            CLR_ON & _PWRTE_ON & _WDT_OFF & _XT_OSC
+                      00070 
+2008   3FFC           00071    __CONFIG    _CONFIG2, _IESO_OFF & _FCMEN_OFF
+                      00072 
+                      00073 
+                      00074 
+                      00075 
+                      00076 
+                      00077  #DEFINE        LCD_DATA                PORTB           ; data çýkýþlarý 0123 den olacak andlw 0x0f
+                      00078 
+                      00079 #DEFINE         RS                              PORTB,4         ; RS line of LCD        
+                      00080 
+                      00081 #DEFINE         E                               PORTB,5         ;  E line of LCD
+                      00082 
+                      00083 
+                      00084 
+                      00085      ERRORLEVEL -224        ;  supress annoying message from tris
+                      00086 
+                      00087      ERRORLEVEL -302        ;  supress message from page change
+                      00088 
+                      00089 ;
+                      00090 
+                      00091  cblock 0x20
+                      00092 
+  00000020            00093 CVD00,CVD01,CVD02,CVD03,CVD04,CVD05
+                      00094 
+  00000026            00095 ADHIGH, ADLOW,temp,del,tempV,tempT,battVolt
+                      00096 
+  0000002D            00097 count,delay           
+                      00098 
+  0000002F            00099 d1,veri,sayac
+                      00100 
+  00000032            00101 komut
+                      00102 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+  00000033            00103 var1,var2,var3,var4,varCS,tim1,tim2,okunan,d2,f1,f2,flop
+                      00104 
+                      00105   endc
+                      00106 
+                      00107 ;
+                      00108 
+                      00109 
+                      00110 
+0000                  00111   org 0
+                      00112 
+0000   2801           00113         goto init
+                      00114 
+                      00115 ;---------------------------------------
+                      00116 
+0001                  00117 init
+                      00118 
+0001   1283 1303      00119         BANKSEL PORTA                           ; select bank of PORTA
+                      00120 
+0003   0185           00121                 CLRF PORTA                              ; Initialize PORTA by
+                      00122 
+0004   1683 1303      00123         BANKSEL ANSEL                           ; Select Bank of ANSEL
+                      00124 
+0006   3001           00125                 MOVLW   B'0000001'              ; Configure all pins
+                      00126 
+0007   009B           00127                 MOVWF   ANSEL                   ; as digital inputs A0 analog
+                      00128 
+0008   3080           00129                 MOVLW   B'10000000'     ; rigth justified
+                      00130 
+0009   009F           00131                 MOVWF   ADCON1
+                      00132 
+000A   1283 1303      00133         BANKSEL ADCON0
+                      00134 
+000C   3045           00135                 MOVLW   b'01000101'             ; CH:0
+                      00136 
+000D   009F           00137                 MOVWF   ADCON0
+                      00138 
+000E   1683 1303      00139         BANKSEL CMCON    
+                      00140 
+0010   3007           00141                 movlw   B'00000111'                     ;COMPARATÖR MODUNU KAPATMAK iÇiN
+                      00142 
+0011   009C           00143                 movwf   CMCON
+                      00144 
+0012   1683 1303      00145         BANKSEL TRISA 
+                      00146 
+0014   3001           00147                 movlw   B'00000001'        ;  
+                      00148 
+0015   0085           00149                 movwf   TRISA
+                      00150 
+0016   30FE           00151         movlw   b'11111110'     ; 
+                      00152 
+0017   0086           00153                 movwf   TRISB
+                      00154 
+0018   1683 1303      00155     BANKSEL OPTION_REG
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00156 
+001A   3007           00157         movlw   B'00000111'        ; pull-ups ENABLE,prescaler assigned to TMR0   ()10100110
+                      00158 
+001B   0081           00159         movwf   OPTION_REG         ; prescaler set to 1:128 , rolls over each second
+                      00160 
+001C   1283           00161   bcf STATUS,RP0
+                      00162 
+001D   1303           00163   bcf STATUS,RP1        
+                      00164 
+                      00165 ;-----------------------------------
+                      00166 
+001E   1406           00167                 bsf PORTB,0     ;
+                      00168 
+001F   1105           00169                 bcf PORTA,2     ; alýcý off
+                      00170 
+0020   1585           00171                 bsf PORTA,3     ; ptt off / 573 OE off
+                      00172 
+0021   1205           00173                 bcf PORTA,4     ; 8870 OE off
+                      00174 
+0022   1085           00175                 bcf PORTA,1     ; led off
+                      00176 
+0023   2824           00177         goto start    
+                      00178 
+                      00179 ;----------------------------------
+                      00180 
+0024                  00181 start
+                      00182 
+0024   208B           00183         call okuV
+                      00184 
+0025   20A2           00185         call CVDEC
+                      00186 
+0026   210D           00187         call  alicivoltaji              ; voltaj uygun ise alýcý açýldý
+                      00188 
+0027   1605           00189         bsf PORTA,4     ; 8870 OE on
+                      00190 
+0028   213A           00191                 call Kychk
+                      00192 
+0029   300B           00193                 movlw 0x0B      ; DTMF "*"
+                      00194 
+002A   023A           00195                 subwf okunan,W
+                      00196 
+002B   1D03           00197                 btfss STATUS,Z
+                      00198 
+002C   2824           00199         goto start
+                      00200 
+002D   213A           00201                 call Kychk
+                      00202 
+002E   083A           00203                 movf okunan,W
+                      00204 
+002F   00B3           00205                 movwf var1
+                      00206 
+                      00207 
+                      00208 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0030   213A           00209                 call Kychk
+                      00210 
+0031   083A           00211                 movf okunan,W
+                      00212 
+0032   00B4           00213                 movwf var2
+                      00214 
+                      00215 
+                      00216 
+0033   213A           00217                 call Kychk
+                      00218 
+0034   083A           00219                 movf okunan,W
+                      00220 
+0035   00B5           00221                 movwf var3
+                      00222 
+                      00223 
+                      00224 
+0036   213A           00225                 call Kychk
+                      00226 
+0037   083A           00227                 movf okunan,W
+                      00228 
+0038   00B6           00229                 movwf var4
+                      00230 
+                      00231 
+                      00232 
+0039   213A           00233                 call Kychk
+                      00234 
+003A   083A           00235                 movf okunan,W
+                      00236 
+003B   00B7           00237                 movwf varCS
+                      00238 
+                      00239 
+                      00240 
+003C   213A           00241                 call Kychk
+                      00242 
+003D   300C           00243                 movlw 0x0C      ; DTMF "#"
+                      00244 
+003E   023A           00245                 subwf okunan,W
+                      00246 
+003F   1D03           00247                 btfss STATUS,Z
+                      00248 
+0040   2824           00249         goto start
+                      00250 
+0041   0833           00251                 movf var1,W
+                      00252 
+0042   00A8           00253                 movwf temp      ;temp=var1
+                      00254 
+0043   0834           00255                 movf var2,W
+                      00256 
+Message[305]: Using default destination of 1 (file).
+0044   07A8           00257                 addwf temp
+                      00258 
+0045   0835           00259                 movf var3,W
+                      00260 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Message[305]: Using default destination of 1 (file).
+0046   07A8           00261                 addwf temp
+                      00262 
+0047   0836           00263                 movf var4,W
+                      00264 
+Message[305]: Using default destination of 1 (file).
+0048   07A8           00265                 addwf temp              ; temp=var1+var2+var3+var4
+                      00266 
+0049   0828           00267                 movf temp,W
+                      00268 
+004A   390F           00269                 andlw 0x0f
+                      00270 
+004B   00A8           00271                 movwf temp              ; 0x0/XXXX
+                      00272 
+                      00273 ;---------
+                      00274 
+004C   0828           00275         movf temp,W
+                      00276 
+004D   0237           00277                 subwf varCS,W
+                      00278 
+004E   1D03           00279                 btfss STATUS,Z
+                      00280 
+004F   2824           00281         goto start
+                      00282 
+0050                  00283 data_dogru
+                      00284 
+0050   1205           00285         bcf PORTA,4                     ; 8870 OE off
+                      00286 
+0051   2086           00287         call bportu_giris               ; sadece RS232 için B0 çýkýþ
+                      00288 
+0052   2134           00289         call bekle
+                      00290 
+                      00291 ;
+                      00292 
+0053   3040           00293         movlw "@"
+                      00294 
+0054   2120           00295                 call senddata
+                      00296 
+                      00297 ;
+                      00298 
+                      00299 
+                      00300 
+0055   0833           00301                 movf var1,W
+                      00302 
+0056   3E30           00303                 addlw 0x30
+                      00304 
+0057   2120           00305                 call senddata
+                      00306 
+                      00307 ;
+                      00308 
+0058   0834           00309                 movf var2,W
+                      00310 
+0059   3E30           00311                 addlw 0x30
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00312 
+005A   2120           00313                 call senddata
+                      00314 
+                      00315 ;
+                      00316 
+005B   0835           00317                 movf var3,W
+                      00318 
+005C   3E30           00319                 addlw 0x30
+                      00320 
+005D   2120           00321                 call senddata
+                      00322 
+                      00323 ;
+                      00324 
+005E   300A           00325                 movlw 0x0a
+                      00326 
+005F   0236           00327                 subwf var4,W
+                      00328 
+0060   1903           00329                 btfsc STATUS,Z
+                      00330 
+0061   01B6           00331                 clrf var4
+                      00332 
+0062   0836           00333                 movf var4,W
+                      00334 
+0063   3E30           00335                 addlw 0x30
+                      00336 
+0064   2120           00337                 call senddata
+                      00338 
+                      00339 ;
+                      00340 
+                      00341 
+                      00342 
+0065   300A           00343                 movlw 0x0a              ;dtmf 0
+                      00344 
+0066   0237           00345                 subwf varCS,W
+                      00346 
+0067   1903           00347                 btfsc STATUS,Z
+                      00348 
+0068   287E           00349    goto cev0
+                      00350 
+0069   300B           00351                 movlw 0x0b      ;dtmf *
+                      00352 
+006A   0237           00353                 subwf varCS,W
+                      00354 
+006B   1903           00355                 btfsc STATUS,Z
+                      00356 
+006C   2880           00357    goto cevstar
+                      00358 
+006D   300C           00359                 movlw 0x0c              ;dtmf #
+                      00360 
+006E   0237           00361                 subwf varCS,W
+                      00362 
+006F   1903           00363                 btfsc STATUS,Z          
+                      00364 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0070   2882           00365  goto cev#
+                      00366 
+0071   300E           00367                 movlw 0x0e              ;dtmf B
+                      00368 
+0072   0237           00369                 subwf varCS,W
+                      00370 
+0073   1903           00371                 btfsc STATUS,Z
+                      00372 
+0074   2884           00373    goto cevB            
+                      00374 
+0075   0837           00375                 movf varCS,W
+                      00376 
+0076   3E30           00377                 addlw 0x30
+                      00378 
+0077   2120           00379 gerigel         call senddata
+                      00380 
+0078   300A           00381         movlw h'0A'
+                      00382 
+0079   2120           00383                 call senddata
+                      00384 
+                      00385 ;       call bekle
+                      00386 
+007A   300D           00387         movlw h'0D'
+                      00388 
+007B   2120           00389                 call senddata
+                      00390 
+007C   2134           00391         call bekle
+                      00392 
+Warning[203]: Found opcode in column 1. (goto)
+007D   2824           00393 goto start
+                      00394 
+                      00395 ;-------------
+                      00396 
+007E                  00397 cev0
+                      00398 
+007E   3030           00399                 movlw "0"
+                      00400 
+007F   2877           00401         goto gerigel
+                      00402 
+0080                  00403 cevstar
+                      00404 
+0080   302A           00405                 movlw "*"
+                      00406 
+0081   2877           00407         goto gerigel
+                      00408 
+0082                  00409 cev#
+                      00410 
+0082   3023           00411                 movlw "#"
+                      00412 
+0083   2877           00413         goto gerigel
+                      00414 
+0084                  00415 cevB
+                      00416 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0084   3042           00417                 movlw "B"
+                      00418 
+0085   2877           00419         goto gerigel
+                      00420 
+                      00421 
+                      00422 
+                      00423 
+                      00424 
+                      00425 
+                      00426 
+                      00427 
+                      00428 
+                      00429 
+                      00430 
+                      00431 
+                      00432 
+                      00433 
+                      00434 
+                      00435 
+                      00436 
+                      00437 
+                      00438 
+                      00439 
+                      00440 
+                      00441 ;----------------------------------------
+                      00442 
+0086                  00443 bportu_giris
+                      00444 
+0086   1683           00445                 bsf STATUS,RP0
+                      00446 
+0087   30FE           00447                 movlw   b'11111110'     ;  B0 output rs232 TX için
+                      00448 
+0088   0086           00449                 movwf   TRISB
+                      00450 
+0089   1283           00451                 bcf STATUS,RP0
+                      00452 
+008A   0008           00453  return
+                      00454 
+                      00455 ;--------------------------------------
+                      00456 
+008B                  00457 okuV
+                      00458 
+008B   3041           00459         MOVLW B'01000001' ;  ; ch 0       
+                      00460 
+008C   009F           00461         MOVWF ADCON0
+                      00462 
+                      00463 ;****************** Required Aquisition Delay *********************************
+                      00464 
+008D   3010           00465         MOVLW 0x10
+                      00466 
+008E   00A9           00467         MOVWF del
+                      00468 
+008F                  00469 LOOP2
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00470 
+008F   0000           00471         NOP
+                      00472 
+0090   0000           00473         NOP 
+                      00474 
+0091   0BA9           00475         DECFSZ del,1
+                      00476 
+0092   288F           00477         GOTO LOOP2
+                      00478 
+                      00479 ;******************* Start Conversion ******************************************
+                      00480 
+0093   151F           00481         bsf ADCON0,2
+                      00482 
+                      00483 ;*******************Poll to see when done *****************************************
+                      00484 
+0094                  00485 LOOP12
+                      00486 
+0094   0000           00487                 NOP
+                      00488 
+0095   191F           00489                 BTFSC ADCON0, 2 ; polling
+                      00490 
+0096   2894           00491                 GOTO LOOP12
+                      00492 
+0097   0103           00493                 CLRW
+                      00494 
+0098   30FF           00495                 MOVLW B'11111111'
+                      00496 
+0099   051E           00497                 ANDWF ADRESH,0                  ; copy results of ADRESH to W
+                      00498 
+009A   00A6           00499                 movwf ADHIGH
+                      00500 
+009B   1683           00501                 bsf STATUS,RP0  ;bank1
+                      00502 
+009C   0103           00503                 CLRW
+                      00504 
+009D   30FF           00505                 MOVLW B'11111111'
+                      00506 
+009E   051E           00507                 ANDWF ADRESL,0          
+                      00508 
+009F   1283           00509         bcf STATUS,RP0  ;bank0
+                      00510 
+00A0   00A7           00511                 movwf ADLOW
+                      00512 
+00A1   0008           00513  return
+                      00514 
+                      00515 ;------------------------------
+                      00516 
+00A2                  00517 CVDEC                   ;  ref=10V, 10 bit A 2  DEC
+                      00518 
+00A2   01A0           00519         CLRF    CVD00
+                      00520 
+00A3   01A1           00521         CLRF    CVD01
+                      00522 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00A4   01A2           00523         CLRF    CVD02
+                      00524 
+00A5   01A3           00525         CLRF    CVD03
+                      00526 
+00A6   01A4           00527         CLRF    CVD04
+                      00528 
+00A7   01A5           00529         CLRF    CVD05
+                      00530 
+00A8                  00531 CVDEC00
+                      00532 
+00A8   1CA6           00533         BTFSS   ADHIGH,01
+                      00534 
+00A9   28AC           00535         GOTO    CVDEC01
+                      00536 
+00AA   3005           00537         MOVLW   D'05'
+                      00538 
+00AB   07A2           00539         ADDWF   CVD02,F
+                      00540 
+00AC                  00541 CVDEC01
+                      00542 
+00AC   1C26           00543         BTFSS   ADHIGH,00
+                      00544 
+00AD   28B2           00545         GOTO    CVDEC02
+                      00546 
+00AE   3002           00547         MOVLW   D'02'
+                      00548 
+00AF   07A2           00549         ADDWF   CVD02,F
+                      00550 
+00B0   3005           00551         MOVLW   D'05'
+                      00552 
+00B1   07A3           00553         ADDWF   CVD03,F
+                      00554 
+00B2                  00555 CVDEC02
+                      00556 
+00B2   1FA7           00557         BTFSS   ADLOW,07
+                      00558 
+00B3   28BA           00559         GOTO    CVDEC03
+                      00560 
+00B4   3001           00561         MOVLW   D'01'
+                      00562 
+00B5   07A2           00563         ADDWF   CVD02,F
+                      00564 
+00B6   3002           00565         MOVLW   D'02'
+                      00566 
+00B7   07A3           00567         ADDWF   CVD03,F
+                      00568 
+00B8   3005           00569         MOVLW   D'05'
+                      00570 
+00B9   07A4           00571         ADDWF   CVD04,F
+                      00572 
+00BA                  00573 CVDEC03
+                      00574 
+00BA   1F27           00575         BTFSS   ADLOW,06
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00576 
+00BB   28C2           00577         GOTO    CVDEC04
+                      00578 
+00BC   3006           00579         MOVLW   D'06'
+                      00580 
+00BD   07A3           00581         ADDWF   CVD03,F
+                      00582 
+00BE   3002           00583         MOVLW   D'02'
+                      00584 
+00BF   07A4           00585         ADDWF   CVD04,F
+                      00586 
+00C0   3005           00587         MOVLW   D'05'
+                      00588 
+00C1   07A5           00589         ADDWF   CVD05,F
+                      00590 
+00C2                  00591 CVDEC04
+                      00592 
+00C2   1EA7           00593         BTFSS   ADLOW,05
+                      00594 
+00C3   28CA           00595         GOTO    CVDEC05
+                      00596 
+00C4   3003           00597         MOVLW   D'03'
+                      00598 
+00C5   07A3           00599         ADDWF   CVD03,F
+                      00600 
+00C6   3001           00601         MOVLW   D'01'
+                      00602 
+00C7   07A4           00603         ADDWF   CVD04,F
+                      00604 
+00C8   3003           00605         MOVLW   D'03'
+                      00606 
+00C9   07A5           00607         ADDWF   CVD05,F
+                      00608 
+00CA                  00609 CVDEC05
+                      00610 
+00CA   1E27           00611         BTFSS   ADLOW,04
+                      00612 
+00CB   28D2           00613         GOTO    CVDEC06
+                      00614 
+00CC   3001           00615         MOVLW   D'01'
+                      00616 
+00CD   07A3           00617         ADDWF   CVD03,F
+                      00618 
+00CE   3005           00619         MOVLW   D'05'
+                      00620 
+00CF   07A4           00621         ADDWF   CVD04,F
+                      00622 
+00D0   3006           00623         MOVLW   D'06'
+                      00624 
+00D1   07A5           00625         ADDWF   CVD05,F
+                      00626 
+00D2                  00627 CVDEC06
+                      00628 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00D2   1DA7           00629         BTFSS   ADLOW,03
+                      00630 
+00D3   28D8           00631         GOTO    CVDEC07
+                      00632 
+00D4   3007           00633         MOVLW   D'07'
+                      00634 
+00D5   07A4           00635         ADDWF   CVD04,F
+                      00636 
+00D6   3008           00637         MOVLW   D'08'
+                      00638 
+00D7   07A5           00639         ADDWF   CVD05,F
+                      00640 
+00D8                  00641 CVDEC07
+                      00642 
+00D8   1D27           00643         BTFSS   ADLOW,02
+                      00644 
+00D9   28DE           00645         GOTO    CVDEC08
+                      00646 
+00DA   3003           00647         MOVLW   D'03'
+                      00648 
+00DB   07A4           00649         ADDWF   CVD04,F
+                      00650 
+00DC   3009           00651         MOVLW   D'09'
+                      00652 
+00DD   07A5           00653         ADDWF   CVD05,F
+                      00654 
+00DE                  00655 CVDEC08
+                      00656 
+00DE   1CA7           00657         BTFSS   ADLOW,01
+                      00658 
+00DF   28E2           00659         GOTO    CVDEC09
+                      00660 
+00E0   3002           00661         MOVLW   D'02'
+                      00662 
+00E1   07A4           00663         ADDWF   CVD04,F
+                      00664 
+00E2                  00665 CVDEC09
+                      00666 
+00E2   1C27           00667         BTFSS   ADLOW,00
+                      00668 
+00E3   28E6           00669         GOTO    CVDEC10
+                      00670 
+00E4   3001           00671         MOVLW   D'01'
+                      00672 
+00E5   07A4           00673         ADDWF   CVD04,F
+                      00674 
+00E6                  00675 CVDEC10
+                      00676 
+00E6   300A           00677         MOVLW   D'10'
+                      00678 
+00E7   0AA4           00679         INCF    CVD04,F
+                      00680 
+00E8   02A5           00681         SUBWF   CVD05,F
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00682 
+00E9   1803           00683         BTFSC   STATUS,C
+                      00684 
+00EA   28E7           00685         GOTO    $-3
+                      00686 
+00EB   03A4           00687         DECF    CVD04,F
+                      00688 
+00EC   07A5           00689         ADDWF   CVD05,F
+                      00690 
+00ED   0AA3           00691         INCF    CVD03,F
+                      00692 
+00EE   02A4           00693         SUBWF   CVD04,F
+                      00694 
+00EF   1803           00695         BTFSC   STATUS,C
+                      00696 
+00F0   28ED           00697         GOTO    $-3
+                      00698 
+00F1   03A3           00699         DECF    CVD03,F
+                      00700 
+00F2   07A4           00701         ADDWF   CVD04,F
+                      00702 
+00F3   0AA2           00703         INCF    CVD02,F
+                      00704 
+00F4   02A3           00705         SUBWF   CVD03,F
+                      00706 
+00F5   1803           00707         BTFSC   STATUS,C
+                      00708 
+00F6   28F3           00709         GOTO    $-3
+                      00710 
+00F7   03A2           00711         DECF    CVD02,F
+                      00712 
+00F8   07A3           00713         ADDWF   CVD03,F
+                      00714 
+00F9   0AA1           00715         INCF    CVD01,F
+                      00716 
+00FA   02A2           00717         SUBWF   CVD02,F
+                      00718 
+00FB   1803           00719         BTFSC   STATUS,C
+                      00720 
+00FC   28F9           00721         GOTO    $-3
+                      00722 
+00FD   03A1           00723         DECF    CVD01,F
+                      00724 
+00FE   07A2           00725         ADDWF   CVD02,F
+                      00726 
+00FF   0AA0           00727         INCF    CVD00,F
+                      00728 
+0100   02A1           00729         SUBWF   CVD01,F
+                      00730 
+0101   1803           00731         BTFSC   STATUS,C
+                      00732 
+0102   28FF           00733         GOTO    $-3
+                      00734 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0103   03A0           00735         DECF    CVD00,F
+                      00736 
+0104   07A1           00737         ADDWF   CVD01,F
+                      00738 
+                      00739 
+                      00740 
+0105   3030           00741         MOVLW   D'48'
+                      00742 
+                      00743 
+                      00744 
+0106   07A0           00745         ADDWF   CVD00,F
+                      00746 
+0107   07A1           00747         ADDWF   CVD01,F
+                      00748 
+0108   07A2           00749         ADDWF   CVD02,F
+                      00750 
+0109   07A3           00751         ADDWF   CVD03,F
+                      00752 
+010A   07A4           00753         ADDWF   CVD04,F
+                      00754 
+010B   07A5           00755         ADDWF   CVD05,F
+                      00756 
+                      00757 
+                      00758 
+010C   0008           00759         RETURN
+                      00760 
+                      00761 ;-----------------------------------------------------
+                      00762 
+010D                  00763 alicivoltaji
+                      00764 
+010D   0E22           00765                 swapf CVD02,W
+                      00766 
+010E   39F0           00767                 andlw 0xF0
+                      00768 
+010F   00AA           00769                 movwf tempV             ; 84210000
+                      00770 
+0110   00AC           00771     MOVWF battVolt              ; batarya voltajýný göndermek için kullanýlacak deðer
+                      00772 
+0111   0823           00773                 movf CVD03,W
+                      00774 
+0112   390F           00775                 andlw 0x0f
+                      00776 
+Message[305]: Using default destination of 1 (file).
+0113   07AA           00777                 addwf tempV             ;
+                      00778 
+                      00779 ;
+                      00780 
+0114   3072           00781                 movlw 0x72              ; batarya 7.2V un üzerinde ise telsizi aç
+                      00782 
+0115   022A           00783                 subwf tempV,W
+                      00784 
+0116   1C03           00785                 btfss STATUS,C  ; F-W=  + ise C=1,   F-W=  - ise C=0
+                      00786 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0117   291A           00787         goto lowbak                             ;bcf PORTA,7
+                      00788 
+0118   1505           00789                 bsf PORTA,2             ; telsiz açýldý 
+                      00790 
+                      00791 ;               bsf temp1,0                     ; temp1 set
+                      00792 
+0119   0008           00793         return
+                      00794 
+                      00795 ;---------
+                      00796 
+011A                  00797 lowbak  
+                      00798 
+011A   3065           00799                 movlw 0x65                      ; batarya 6.5 voltun altýnda ise telsizi kapa   
+                      00800 
+011B   022A           00801                 subwf tempV,W
+                      00802 
+011C   1803           00803              btfsc STATUS,C             ;        F-W=  + ise C=1,   F-W=  - ise C=0
+                      00804 
+011D   0008           00805   return
+                      00806 
+011E   1105           00807                 bcf PORTA,2             ; telsiz kapandý
+                      00808 
+011F   0008           00809  return
+                      00810 
+                      00811 ;--------------------------------------------------------------------------------
+                      00812 
+0120                  00813 senddata        ; TX tarafý   8N1.5
+                      00814 
+0120   00B0           00815                 movwf veri
+                      00816 
+0121   1003           00817                 bcf STATUS,C
+                      00818 
+0122   1006           00819                 bcf     PORTB,0       ; ?start bit send
+                      00820 
+0123   2134           00821                 call bekle
+                      00822 
+0124   3008           00823         movlw   .8
+                      00824 
+0125   00B1           00825         movwf   sayac
+                      00826 
+0126                  00827 TX_Loop:
+                      00828 
+0126   0CB0           00829         RRF veri,F
+                      00830 
+0127   1C03           00831         btfss STATUS,C
+                      00832 
+0128   1006           00833         bcf     PORTB,0
+                      00834 
+0129   1803           00835         btfsc STATUS,C
+                      00836 
+012A   1406           00837         bsf     PORTB,0
+                      00838 
+012B   2134           00839         call bekle
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00840 
+012C   0BB1           00841         decfsz  sayac,f
+                      00842 
+012D   2926           00843         goto    TX_Loop
+                      00844 
+012E   1406           00845         bsf     PORTB,0        ;?stop bit send
+                      00846 
+012F   2134           00847         call bekle
+                      00848 
+0130   300E           00849         movlw   0x0e
+                      00850 
+0131   00AF           00851         movwf   d1
+                      00852 
+0132   2136           00853         call Delay_0
+                      00854 
+0133   0008           00855   return
+                      00856 
+                      00857 ;---------------------------------
+                      00858 
+0134                  00859 bekle                   ;91 cycles
+                      00860 
+0134   301B           00861         movlw   0x1b
+                      00862 
+0135   00AF           00863         movwf   d1
+                      00864 
+0136                  00865 Delay_0
+                      00866 
+0136   0BAF           00867         decfsz  d1, f
+                      00868 
+0137   2936           00869         goto    Delay_0
+                      00870 
+                      00871 ;       goto    $+1;2 cycles
+                      00872 
+0138   0000           00873         nop
+                      00874 
+0139   0008           00875  return
+                      00876 
+                      00877 ;----------------------------------------------------------------
+                      00878 
+013A                  00879 Kychk  
+                      00880 
+013A   01B8           00881                 clrf tim1
+                      00882 
+013B   01B9           00883                 clrf tim2
+                      00884 
+013C   1485           00885                 BSF PORTA,1
+                      00886 
+013D   1B86           00887                 btfsc PORTB,7   ;dat
+                      00888 
+013E   293A           00889                 goto Kychk
+                      00890 
+                      00891         
+                      00892 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+013F                  00893 Kypush 
+                      00894 
+013F   1085           00895                 BCF PORTA,1
+                      00896 
+0140   215B           00897         call timer_05   
+                      00898 
+0141   1F86           00899                 btfss PORTB,7
+                      00900 
+0142   293F           00901                 goto Kypush             ;  dtmd datayý burada bekler, timer dolunca voltaj okur iþini ya
+                            par
+                      00902 
+0143   2151           00903                 call bekle_40ms ; geri buraya gelir.
+                      00904 
+0144   1F86           00905                 btfss PORTB,7
+                      00906 
+0145   293F           00907                 goto Kypush
+                      00908 
+0146   0806           00909                 movf PORTB,W
+                      00910 
+0147   00BA           00911                 movwf okunan            ;dat,d3,d2,d1,d0,x,x,x
+                      00912 
+0148   0CBA           00913         rrf okunan,1
+                      00914 
+0149   0CBA           00915         rrf okunan,1
+                      00916 
+014A   0CBA           00917         rrf okunan,1
+                      00918 
+014B   083A           00919         movf okunan,W
+                      00920 
+014C   390F           00921         andlw 0x0f
+                      00922 
+014D   00BA           00923         movwf okunan
+                      00924 
+014E   01B8           00925                 clrf tim1
+                      00926 
+014F   01B9           00927                 clrf tim2
+                      00928 
+                      00929 
+                      00930 
+0150   0008           00931         return
+                      00932 
+                      00933 ;----------------------
+                      00934 
+0151                  00935 bekle_40ms
+                      00936 
+                      00937                         ;35798 cycles
+                      00938 
+0151   30F7           00939         movlw   0xF7
+                      00940 
+0152   00AF           00941         movwf   d1
+                      00942 
+0153   301C           00943         movlw   0x1C
+                      00944 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0154   00BB           00945         movwf   d2
+                      00946 
+0155                  00947 Delay_01
+                      00948 
+0155   0BAF           00949         decfsz  d1, f
+                      00950 
+0156   2958           00951         goto    $+2
+                      00952 
+0157   0BBB           00953         decfsz  d2, f
+                      00954 
+0158   2955           00955         goto    Delay_01
+                      00956 
+                      00957 
+                      00958 
+                      00959                         ;2 cycles
+                      00960 
+0159   295A           00961         goto    $+1
+                      00962 
+015A   0008           00963  return
+                      00964 
+                      00965 
+                      00966 
+                      00967 
+                      00968 
+015B                  00969 timer_05                        ; süre sonunda starta gider, voltaj okuma vs yapar geri Kychk e gelir
+                      00970 
+Message[305]: Using default destination of 1 (file).
+015B   0AB8           00971                 incf tim1
+                      00972 
+015C   30FF           00973                 movlw 0xff
+                      00974 
+015D   0238           00975                 subwf tim1,W 
+                      00976 
+015E   1D03           00977                 btfss STATUS,Z  
+                      00978 
+015F   0008           00979         return   
+                      00980 
+Message[305]: Using default destination of 1 (file).
+0160   0AB9           00981                 incf tim2
+                      00982 
+0161   30FF           00983                 movlw 0xff
+                      00984 
+0162   0239           00985                 subwf tim2,W
+                      00986 
+0163   1903           00987                 btfsc STATUS,Z
+                      00988 
+0164   2824           00989               goto start
+                      00990 
+0165   0008           00991  return
+                      00992 
+                      00993 ;----------------------
+                      00994 
+                      00995 
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 20
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00996 
+Warning[205]: Found directive in column 1. (END)
+                      00997 END
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 21
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ADCON0                            0000001F
+ADCON1                            0000009F
+ADCS0                             00000006
+ADCS1                             00000007
+ADCS2                             00000006
+ADDEN                             00000003
+ADFM                              00000007
+ADHIGH                            00000026
+ADIE                              00000006
+ADIF                              00000006
+ADLOW                             00000027
+ADON                              00000000
+ADRESH                            0000001E
+ADRESL                            0000009E
+ANSEL                             0000009B
+BF                                00000000
+BRGH                              00000002
+C                                 00000000
+C1INV                             00000004
+C1OUT                             00000006
+C2INV                             00000005
+C2OUT                             00000007
+CCP1CON                           00000017
+CCP1IE                            00000002
+CCP1IF                            00000002
+CCP1M0                            00000000
+CCP1M1                            00000001
+CCP1M2                            00000002
+CCP1M3                            00000003
+CCP1X                             00000005
+CCP1Y                             00000004
+CCPR1H                            00000016
+CCPR1L                            00000015
+CHS0                              00000003
+CHS1                              00000004
+CHS2                              00000005
+CIS                               00000003
+CKE                               00000006
+CKP                               00000004
+CM0                               00000000
+CM1                               00000001
+CM2                               00000002
+CMCON                             0000009C
+CMIE                              00000006
+CMIF                              00000006
+CREN                              00000004
+CSRC                              00000007
+CVD00                             00000020
+CVD01                             00000021
+CVD02                             00000022
+CVD03                             00000023
+CVD04                             00000024
+CVD05                             00000025
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 22
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+CVDEC                             000000A2
+CVDEC00                           000000A8
+CVDEC01                           000000AC
+CVDEC02                           000000B2
+CVDEC03                           000000BA
+CVDEC04                           000000C2
+CVDEC05                           000000CA
+CVDEC06                           000000D2
+CVDEC07                           000000D8
+CVDEC08                           000000DE
+CVDEC09                           000000E2
+CVDEC10                           000000E6
+CVR0                              00000000
+CVR1                              00000001
+CVR2                              00000002
+CVR3                              00000003
+CVRCON                            0000009D
+CVREN                             00000007
+CVROE                             00000006
+CVRR                              00000005
+D                                 00000005
+DATA_ADDRESS                      00000005
+DC                                00000001
+D_A                               00000005
+Delay_0                           00000136
+Delay_01                          00000155
+E                                 PORTB,5
+EEADR                             0000010D
+EEADRH                            0000010F
+EECON1                            0000018C
+EECON2                            0000018D
+EEDATA                            0000010C
+EEDATH                            0000010E
+EEIE                              00000004
+EEIF                              00000004
+EEPGD                             00000007
+F                                 00000001
+FERR                              00000002
+FREE                              00000004
+FSR                               00000004
+GIE                               00000007
+GO                                00000002
+GO_DONE                           00000002
+I2C_DATA                          00000005
+I2C_READ                          00000002
+I2C_START                         00000003
+I2C_STOP                          00000004
+INDF                              00000000
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IOFS                              00000002
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 23
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+IRCF0                             00000004
+IRCF1                             00000005
+IRCF2                             00000006
+IRP                               00000007
+Kychk                             0000013A
+Kypush                            0000013F
+LCD_DATA                          PORTB
+LOOP12                            00000094
+LOOP2                             0000008F
+NOT_A                             00000005
+NOT_ADDRESS                       00000005
+NOT_BO                            00000000
+NOT_BOR                           00000000
+NOT_DONE                          00000002
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RBPU                          00000007
+NOT_RC8                           00000006
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+NOT_TX8                           00000006
+NOT_W                             00000002
+NOT_WRITE                         00000002
+OERR                              00000001
+OPTION_REG                        00000081
+OSCCON                            0000008F
+OSCTUNE                           00000090
+OSFIE                             00000007
+OSFIF                             00000007
+OSTS                              00000003
+P                                 00000004
+PCL                               00000002
+PCLATH                            0000000A
+PCON                              0000008E
+PEIE                              00000006
+PIE1                              0000008C
+PIE2                              0000008D
+PIR1                              0000000C
+PIR2                              0000000D
+PORTA                             00000005
+PORTB                             00000006
+PR2                               00000092
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+R                                 00000002
+RBIE                              00000003
+RBIF                              00000000
+RC8_9                             00000006
+RC9                               00000006
+RCD8                              00000000
+RCIE                              00000005
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 24
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+RCIF                              00000005
+RCREG                             0000001A
+RCSTA                             00000018
+RD                                00000000
+READ_WRITE                        00000002
+RP0                               00000005
+RP1                               00000006
+RS                                PORTB,4
+RX9                               00000006
+RX9D                              00000000
+R_W                               00000002
+S                                 00000003
+SCS0                              00000000
+SCS1                              00000001
+SMP                               00000007
+SPBRG                             00000099
+SPEN                              00000007
+SREN                              00000005
+SSPADD                            00000093
+SSPBUF                            00000013
+SSPCON                            00000014
+SSPEN                             00000005
+SSPIE                             00000003
+SSPIF                             00000003
+SSPM0                             00000000
+SSPM1                             00000001
+SSPM2                             00000002
+SSPM3                             00000003
+SSPOV                             00000006
+SSPSTAT                           00000094
+STATUS                            00000003
+SWDTE                             00000000
+SWDTEN                            00000000
+SYNC                              00000004
+T0CS                              00000005
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000010
+T1INSYNC                          00000002
+T1OSCEN                           00000003
+T1RUN                             00000006
+T2CKPS0                           00000000
+T2CKPS1                           00000001
+T2CON                             00000012
+TMR0                              00000001
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR1CS                            00000001
+TMR1H                             0000000F
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             0000000E
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 25
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TMR1ON                            00000000
+TMR2                              00000011
+TMR2IE                            00000001
+TMR2IF                            00000001
+TMR2ON                            00000002
+TOUTPS0                           00000003
+TOUTPS1                           00000004
+TOUTPS2                           00000005
+TOUTPS3                           00000006
+TRISA                             00000085
+TRISB                             00000086
+TRMT                              00000001
+TUN0                              00000000
+TUN1                              00000001
+TUN2                              00000002
+TUN3                              00000003
+TUN4                              00000004
+TUN5                              00000005
+TX8_9                             00000006
+TX9                               00000006
+TX9D                              00000000
+TXD8                              00000000
+TXEN                              00000005
+TXIE                              00000004
+TXIF                              00000004
+TXREG                             00000019
+TXSTA                             00000098
+TX_Loop                           00000126
+UA                                00000001
+VCFG0                             00000004
+VCFG1                             00000005
+W                                 00000000
+WCOL                              00000007
+WDTCON                            00000105
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+Z                                 00000002
+_BODEN_OFF                        00003FBF
+_BODEN_ON                         00003FFF
+_CCP1_RB0                         00003FFF
+_CCP1_RB3                         00002FFF
+_CONFIG1                          00002007
+_CONFIG2                          00002008
+_CPD_OFF                          00003FFF
+_CPD_ON                           00003EFF
+_CP_ALL                           00001FFF
+_CP_OFF                           00003FFF
+_DEBUG_OFF                        00003FFF
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 26
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_DEBUG_ON                         000037FF
+_EXTCLK                           00003FEF
+_EXTRC_CLKOUT                     00003FFF
+_EXTRC_IO                         00003FFE
+_FCMEN_OFF                        00003FFE
+_FCMEN_ON                         00003FFF
+_HS_OSC                           00003FEE
+_IESO_OFF                         00003FFD
+_IESO_ON                          00003FFF
+_INTRC_CLKOUT                     00003FFD
+_INTRC_IO                         00003FFC
+_LP_OSC                           00003FEC
+_LVP_OFF                          00003F7F
+_LVP_ON                           00003FFF
+_MCLR_OFF                         00003FDF
+_MCLR_ON                          00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FF7
+_WDT_OFF                          00003FFB
+_WDT_ON                           00003FFF
+_WRT_PROTECT_2048                 00003BFF
+_WRT_PROTECT_256                  00003DFF
+_WRT_PROTECT_ALL                  000039FF
+_WRT_PROTECT_OFF                  00003FFF
+_XT_OSC                           00003FED
+__16F88                           00000001
+alicivoltaji                      0000010D
+battVolt                          0000002C
+bekle                             00000134
+bekle_40ms                        00000151
+bportu_giris                      00000086
+cev#                              00000082
+cev0                              0000007E
+cevB                              00000084
+cevstar                           00000080
+count                             0000002D
+d1                                0000002F
+d2                                0000003B
+data_dogru                        00000050
+del                               00000029
+delay                             0000002E
+f1                                0000003C
+f2                                0000003D
+flop                              0000003E
+gerigel                           00000077
+init                              00000001
+komut                             00000032
+lowbak                            0000011A
+okuV                              0000008B
+okunan                            0000003A
+sayac                             00000031
+senddata                          00000120
+start                             00000024
+MPASM  5.03                         ALICI.ASM   1-5-2014  21:34:13         PAGE 27
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+temp                              00000028
+tempT                             0000002B
+tempV                             0000002A
+tim1                              00000038
+tim2                              00000039
+timer_05                          0000015B
+var1                              00000033
+var2                              00000034
+var3                              00000035
+var4                              00000036
+varCS                             00000037
+veri                              00000030
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+0000 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0080 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+00C0 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0100 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0140 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXX---------- ----------------
+2000 : -------XX------- ---------------- ---------------- ----------------
+
+All other memory blocks unused.
+
+Program Memory Words Used:   358
+Program Memory Words Free:  3738
+
+
+Errors   :     0
+Warnings :     2 reported,     0 suppressed
+Messages :     6 reported,     8 suppressed
+
+

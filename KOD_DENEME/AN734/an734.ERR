@@ -1,0 +1,66 @@
+Warning[205] ..\AN734\AN734.ASM 9 : Found directive in column 1. (__CONFIG)
+Error[113]   ..\AN734\AN734.ASM 9 : Symbol not previously defined (_CONFIG1)
+Error[108]   ..\AN734\AN734.ASM 9 : Illegal character (,)
+Error[113]   ..\AN734\AN734.ASM 15 : Symbol not previously defined (_CONFIG2)
+Error[108]   ..\AN734\AN734.ASM 15 : Illegal character (,)
+Error[118]   ..\AN734\AN734.ASM 15 : Overwriting previous address contents (2007)
+Error[118]   ..\AN734\AN734.ASM 15 : Overwriting previous address contents (2007)
+Warning[205] ..\AN734\AN734.ASM 29 : Found directive in column 1. (cblock)
+Warning[205] ..\AN734\AN734.ASM 35 : Found directive in column 1. (ENDC)
+Error[149]   ..\AN734\AN734.ASM 37 : Directive only allowed when generating an object file
+Warning[207] ..\AN734\AN734.ASM 39 : Found label after column 1. (I2C_ARRAY)
+Message[302] ..\AN734\AN734.ASM 95 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Error[113]   ..\AN734\AN734.ASM 143 : Symbol not previously defined (OSCCON)
+Error[113]   ..\AN734\AN734.ASM 147 : Symbol not previously defined (OSCCON)
+Message[302] ..\AN734\AN734.ASM 151 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Error[113]   ..\AN734\AN734.ASM 155 : Symbol not previously defined (WDTCON)
+Error[113]   ..\AN734\AN734.ASM 157 : Symbol not previously defined (LATC)
+Error[113]   ..\AN734\AN734.ASM 159 : Symbol not previously defined (LATC)
+Message[302] ..\AN734\AN734.ASM 163 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] ..\AN734\AN734.ASM 165 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] ..\AN734\AN734.ASM 177 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Error[113]   ..\AN734\AN734.ASM 181 : Symbol not previously defined (SSPCON1)
+Message[302] ..\AN734\AN734.ASM 183 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Error[113]   ..\AN734\AN734.ASM 185 : Symbol not previously defined (SSPCON3)
+Error[113]   ..\AN734\AN734.ASM 185 : Symbol not previously defined (BOEN)
+Error[113]   ..\AN734\AN734.ASM 191 : Symbol not previously defined (SSPCON3)
+Error[113]   ..\AN734\AN734.ASM 191 : Symbol not previously defined (SDAHT)
+Message[302] ..\AN734\AN734.ASM 195 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] ..\AN734\AN734.ASM 205 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] ..\AN734\AN734.ASM 213 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Message[302] ..\AN734\AN734.ASM 235 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Error[113]   ..\AN734\AN734.ASM 61 : Symbol not previously defined (FSR1L)
+Error[113]   ..\AN734\AN734.ASM 63 : Symbol not previously defined (FSR1H)
+Error[113]   ..\AN734\AN734.ASM 247 : Symbol not previously defined (INDF1)
+Error[113]   ..\AN734\AN734.ASM 255 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 257 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 261 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 263 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 61 : Symbol not previously defined (FSR1L)
+Error[113]   ..\AN734\AN734.ASM 63 : Symbol not previously defined (FSR1H)
+Error[113]   ..\AN734\AN734.ASM 277 : Symbol not previously defined (INDF1)
+Error[113]   ..\AN734\AN734.ASM 285 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 287 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 291 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 293 : Symbol not previously defined (SSPCON1)
+Message[302] ..\AN734\AN734.ASM 309 : Register in operand not in bank 0.  Ensure that bank bits are correct.
+Error[113]   ..\AN734\AN734.ASM 327 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 329 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 353 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 355 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 359 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 61 : Symbol not previously defined (FSR1L)
+Error[113]   ..\AN734\AN734.ASM 63 : Symbol not previously defined (FSR1H)
+Error[113]   ..\AN734\AN734.ASM 393 : Symbol not previously defined (INDF1)
+Error[113]   ..\AN734\AN734.ASM 397 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 399 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 403 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 405 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 423 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 425 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 437 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 439 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 447 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 449 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 469 : Symbol not previously defined (SSPCON1)
+Error[113]   ..\AN734\AN734.ASM 471 : Symbol not previously defined (SSPCON1)

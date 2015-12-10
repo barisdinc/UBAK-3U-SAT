@@ -1,0 +1,4 @@
+16F877,652,22,20
+Reminder! Line [17]	In file [C:\PROJELER\UYDU_TEST\EPS_BATTERY_I2C_TEST_16F877.BAS]	*** Ensure that all fuses are placed in the Config list, as devices have differing default settings! ***
+	PROGRAM COMPILED OK. 652 Words used from a possible 8192
+	22 Variables used in the 16F877 from a possible 368

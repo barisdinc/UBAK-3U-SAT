@@ -1,0 +1,19 @@
+[Project]
+Filename=C:\Projeler\DTMF\DTMF.bas
+[Environment]
+CaretX=26
+CaretY=193
+[Version]
+Enable=1
+Rollover=255
+Major=0
+Minor=0
+Release=1
+Build=159
+[Results]
+Visible=1
+Height=117
+View=1
+[Status]
+Message=Success : 426 program words used, 263 variable bytes used
+Image=2

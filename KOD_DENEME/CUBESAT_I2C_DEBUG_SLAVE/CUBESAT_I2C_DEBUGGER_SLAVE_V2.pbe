@@ -1,0 +1,4 @@
+16F877,526,40,20
+Reminder! Line [4]	In file [C:\PROJELER\CUBESAT_I2C_DEBUG_SLAVE\CUBESAT_I2C_DEBUGGER_SLAVE_V2.BAS]	*** Ensure that all fuses are placed in the Config list, as devices have differing default settings! ***
+	PROGRAM COMPILED OK. 526 Words used from a possible 8192
+	40 Variables used in the 16F877 from a possible 368

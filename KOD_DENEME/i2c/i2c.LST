@@ -1,0 +1,1566 @@
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ;baslangic
+                      00002  list        p=16F688        ; list directive to define processor
+                      00003 
+                      00004  include    p16f688.inc   
+                      00001         LIST
+                      00002 
+                      00003 ;==========================================================================
+                      00004 ;  MPASM PIC16F688 processor include
+                      00005 ; 
+                      00006 ;  (c) Copyright 1999-2013 Microchip Technology, All rights reserved
+                      00007 ;==========================================================================
+                      00008 
+                      00513         LIST
+                      00005  include    macros.inc
+                      00001 ;----------------------------------------------------------------------
+                      00002 ; File : macros.inc
+                      00003 ;       Macros for MPASM
+                      00004 ;
+                      00005 ; Author:
+                      00006 ;       Robert F. Nee
+                      00007 ;       robnee@robnee.com
+                      00008 ;
+                      00009 ; Revisions:
+                      00010 ;       last delta :  02/04/04 20:13:28
+                      00011 ;
+                      00012 ; 1/6/04
+                      00013 ; Redesigned switch case to jump out of the switch statement if
+                      00014 ; endcase is used.  endcase can be omitted after the last case for
+                      00015 ; efficiency
+                      00016 ;
+                      00017 ;               noexpand
+                      00018 
+                      00019 ;----------------------------------------------------------------------
+                      00020 ; Variables for macros
+                      00021 
+  0000                00022                 variable _labelcount = 0
+  0000                00023                 variable _blockdepth = 0
+  0000                00024                 variable _switchdepth = 0
+  0000                00025                 variable _casecount = 0
+  0000                00026                 variable _ifdepth = 0
+  0000                00027                 variable _bankflag = 0
+                      00028 
+                      00029 ;----------------------------------------------------------------------
+                      00030 ; bank0 - switch to register bank 0
+                      00031 
+                      00032 
+                      00033 
+                      00034 bank0           macro
+                      00035                 bcf     STATUS, RP0
+                      00036                 bcf     STATUS, RP1
+                      00037                 endm
+                      00038 
+                      00039 ;----------------------------------------------------------------------
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00040 ; bank1 - switch to register bank 1
+                      00041 
+                      00042 bank1           macro
+                      00043            bcf  STATUS, RP1
+                      00044                 bsf     STATUS, RP0
+                      00045                 endm
+                      00046 
+                      00047 ;----------------------------------------------------------------------
+                      00048 ; Save and restore registers
+                      00049 
+                      00050 int_save        macro
+                      00051                 movwf   w_temp
+                      00052                 swapf   STATUS, w
+                      00053                 movwf   status_temp
+                      00054                 endm
+                      00055 
+                      00056 int_restore     macro
+                      00057                 swapf   status_temp, w
+                      00058                 movwf   STATUS
+                      00059 
+                      00060                 swapf   w_temp, f
+                      00061                 swapf   w_temp, w
+                      00062                 endm
+                      00063 
+                      00064 ;----------------------------------------------------------------------
+                      00065 ; beq - Branch equal
+                      00066 
+                      00067 beq             macro   address
+                      00068                 btfsc   STATUS, Z
+                      00069                 goto    address
+                      00070                 endm
+                      00071 
+                      00072 ;----------------------------------------------------------------------
+                      00073 ; bne - Branch not equal
+                      00074 
+                      00075 bne             macro   address
+                      00076                 btfss   STATUS, Z
+                      00077                 goto    address
+                      00078                 endm
+                      00079 
+                      00080 ;----------------------------------------------------------------------
+                      00081 
+                      00082 beginif         macro
+                      00083 _ifdepth += 1
+                      00084 _labelcount += 1
+                      00085 _ifnum#v(_ifdepth) = _labelcount
+                      00086                         endm
+                      00087 
+                      00088 ;----------------------------------------------------------------------
+                      00089 ; ifweq - if W = <val> do block else do other block
+                      00090 
+                      00091 ifweq   macro   val
+                      00092                 beginif
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00093                 sublw   val
+                      00094                 btfss   STATUS, Z
+                      00095                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00096                 endm
+                      00097 
+                      00098 ifwne   macro   val
+                      00099                 beginif
+                      00100                 sublw   val
+                      00101                 btfsc   STATUS, Z
+                      00102                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00103                 endm
+                      00104 
+                      00105 ;----------------------------------------------------------------------
+                      00106 ; ifeq - if <var> = <val> do block else do other block
+                      00107 
+                      00108 ifeq    macro   var, val
+                      00109                 beginif
+                      00110                 movfw   var
+                      00111                 sublw   val
+                      00112                 btfss   STATUS, Z
+                      00113                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00114                 endm
+                      00115 
+                      00116 ifne    macro   var, val
+                      00117                 beginif
+                      00118                 movfw   var
+                      00119                 sublw   val
+                      00120                 btfsc   STATUS, Z
+                      00121                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00122                 endm
+                      00123 
+                      00124 ifgt    macro   var, val
+                      00125                 beginif
+                      00126                 movfw   var
+                      00127                 sublw   val
+                      00128                 btfsc   STATUS, C
+                      00129                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00130                 endm
+                      00131 
+                      00132 iflt    macro   var, val
+                      00133                 beginif
+                      00134                 movfw   var
+                      00135                 sublw   val - 1
+                      00136                 btfss   STATUS, C
+                      00137                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00138                 endm
+                      00139 
+                      00140 ifle    macro   var, val
+                      00141                 beginif
+                      00142                 movfw   var
+                      00143                 sublw   val
+                      00144                 btfss   STATUS, C
+                      00145                 goto    _if#v(_ifnum#v(_ifdepth))
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00146                 endm
+                      00147 
+                      00148 ifz             macro   
+                      00149                 beginif
+                      00150                 btfss   STATUS, Z
+                      00151                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00152                 endm
+                      00153 
+                      00154 ifnz    macro   
+                      00155                 beginif
+                      00156                 btfsc   STATUS, Z
+                      00157                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00158                 endm
+                      00159 
+                      00160 ifbs    macro   reg, bit
+                      00161                 beginif
+                      00162                 btfss   reg, bit
+                      00163                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00164                 endm
+                      00165 
+                      00166 ifbc    macro   reg, bit
+                      00167                 beginif
+                      00168                 btfsc   reg, bit
+                      00169                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00170                 endm
+                      00171 
+                      00172 ifvgt   macro   rega, regb
+                      00173                 beginif
+                      00174                 movf    rega, w
+                      00175                 subwf   regb, w
+                      00176                 btfsc   STATUS, C
+                      00177                 goto    _if#v(_ifnum#v(_ifdepth))
+                      00178                 endm
+                      00179 
+                      00180 else_   macro
+                      00181 _labelcount += 1
+                      00182                 goto    _if#v(_labelcount)
+                      00183 _if#v(_ifnum#v(_ifdepth))
+                      00184 _ifnum#v(_ifdepth) = _labelcount
+                      00185                 endm
+                      00186 
+                      00187 endif_  macro
+                      00188 _if#v(_ifnum#v(_ifdepth))
+                      00189 _ifdepth -= 1
+                      00190                 endm
+                      00191 
+                      00192 ;----------------------------------------------------------------------
+                      00193 ; begin/endblock - housekeeping for the beginning and end of program blocks
+                      00194 
+                      00195 beginblock      macro
+                      00196 _blockdepth += 1
+                      00197 _labelcount += 1
+                      00198 _blocknum#v(_blockdepth) = _labelcount
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00199                 endm
+                      00200 
+                      00201 endblock        macro
+                      00202 _endblock#v(_blocknum#v(_blockdepth))
+                      00203 _blockdepth -= 1
+                      00204                 endm
+                      00205 
+                      00206 ;----------------------------------------------------------------------
+                      00207 ; loop - loop endlessly
+                      00208 
+                      00209 loop            macro
+                      00210                 beginblock
+                      00211 _looptest#v(_blocknum#v(_blockdepth))
+                      00212 _loop#v(_blocknum#v(_blockdepth))
+                      00213                 endm
+                      00214 
+                      00215 endloop         macro
+                      00216                 redo
+                      00217                 endblock
+                      00218                 endm
+                      00219 
+                      00220 ;----------------------------------------------------------------------
+                      00221 ; from - Count <var> down from <start> to zero
+                      00222 
+                      00223 from            macro   var, start
+                      00224                 beginblock
+                      00225                 movlw   start
+                      00226                 movwf   var
+                      00227 _loop#v(_blocknum#v(_blockdepth))
+                      00228 _loopvar#v(_blockdepth) = var
+                      00229                 endm
+                      00230 
+                      00231 ;----------------------------------------------------------------------
+                      00232 ; from - Count <var> down from value in <reg> to zero
+                      00233 
+                      00234 fromf           macro   var, reg
+                      00235                 beginblock
+                      00236                 movfw   reg
+                      00237                 movwf   var
+                      00238                 addlw   0                       ; Test for null loop
+                      00239                 btfsc   STATUS, Z
+                      00240                 break
+                      00241 _loop#v(_blocknum#v(_blockdepth))
+                      00242 _loopvar#v(_blockdepth) = var
+                      00243                 endm
+                      00244 ;----------------------------------------------------------------------
+                      00245 ; from - Count <var> down from value in W to zero
+                      00246 
+                      00247 fromw           macro   var
+                      00248                 beginblock
+                      00249                 movwf   var
+                      00250                 addlw   0                       ; Test for null loop
+                      00251                 btfsc   STATUS, Z
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00252                 break
+                      00253 _loop#v(_blocknum#v(_blockdepth))
+                      00254 _loopvar#v(_blockdepth) = var
+                      00255                 endm
+                      00256 
+                      00257 ;----------------------------------------------------------------------
+                      00258 
+                      00259 endfrom         macro
+                      00260 _looptest#v(_blocknum#v(_blockdepth))
+                      00261                 decfsz  _loopvar#v(_blockdepth), f
+                      00262                 redo
+                      00263                 endblock
+                      00264                 endm
+                      00265 
+                      00266 ;----------------------------------------------------------------------
+                      00267 ; from16 - Count 16bit <var> down from <start> to zero
+                      00268 
+                      00269 from16          macro   var, start
+                      00270                 beginblock
+                      00271                 movlw   LOW start
+                      00272                 movwf   var
+                      00273                 movlw   HIGH (start - 1) + 1
+                      00274                 movwf   var + 1
+                      00275 _loop#v(_blocknum#v(_blockdepth))
+                      00276 _loopvar#v(_blockdepth) = var
+                      00277                 endm
+                      00278 
+                      00279 endfrom16       macro
+                      00280 _looptest#v(_blocknum#v(_blockdepth))
+                      00281                 decfsz  _loopvar#v(_blockdepth), f
+                      00282                  redo
+                      00283                 decfsz  _loopvar#v(_blockdepth) + 1, f
+                      00284                  redo
+                      00285                 endblock
+                      00286                 endm
+                      00287 
+                      00288 ;----------------------------------------------------------------------
+                      00289 ; for - loop <var> from <start> to <stop> inclusive
+                      00290 
+                      00291 for             macro   var, start, stop
+                      00292                 beginblock
+                      00293                 movlw   start
+                      00294                 movwf   var
+                      00295                 goto    $ + 2           ; skip over the increment first time
+                      00296 _looptest#v(_blocknum#v(_blockdepth))
+                      00297                 if stop > start         ; increment or decrement
+                      00298                  incf   var, f
+                      00299                  movfw  var
+                      00300                  sublw  stop
+                      00301                  btfss  STATUS, C
+                      00302                 else
+                      00303                  decf   var, f
+                      00304                  movfw  var
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00305                  sublw  stop - 1
+                      00306                  btfsc  STATUS, C
+                      00307                 endif
+                      00308                 break
+                      00309 _loop#v(_blocknum#v(_blockdepth))
+                      00310 _loopvar#v(_blockdepth) = var
+                      00311                 endm
+                      00312 
+                      00313 next            macro
+                      00314                 continue
+                      00315                 endblock
+                      00316                 endm
+                      00317 
+                      00318 ;----------------------------------------------------------------------
+                      00319 ; break - break out of the current block
+                      00320 
+                      00321 break           macro
+                      00322                 goto    _endblock#v(_blocknum#v(_blockdepth))
+                      00323                 endm
+                      00324 
+                      00325 ;----------------------------------------------------------------------
+                      00326 ; continue - jump to the next loop iteration
+                      00327 
+                      00328 continue        macro
+                      00329                 goto    _looptest#v(_blocknum#v(_blockdepth))
+                      00330                 endm
+                      00331 
+                      00332 ;----------------------------------------------------------------------
+                      00333 ; redo - jump to the beginning of the block bypassing any loop test code
+                      00334 
+                      00335 redo            macro
+                      00336                 goto _loop#v(_blocknum#v(_blockdepth))
+                      00337                 endm
+                      00338 
+                      00339 ;----------------------------------------------------------------------
+                      00340 ; switch/case - simulates C-style switch and case statements.  Value
+                      00341 ; to be tested is in W.  break is used to exit each case.
+                      00342 
+                      00343 switch  macro
+                      00344 _casecount += 1
+                      00345 _labelcount += 1
+                      00346 _switchdepth += 1
+                      00347 _switchnum#v(_switchdepth) = _labelcount
+                      00348                 endm
+                      00349 
+                      00350 endswitch       macro
+                      00351 _endswitch#v(_switchnum#v(_switchdepth))
+                      00352 _case#v(_casecount)
+                      00353 _switchdepth -= 1
+                      00354                 endm
+                      00355 
+                      00356 case            macro   val
+                      00357 _caseval = val
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00358                 xorlw   val
+                      00359                 bne     _case#v(_casecount)
+                      00360                 endm
+                      00361 
+                      00362 endcase         macro
+                      00363                 goto    _endswitch#v(_switchnum#v(_switchdepth))
+                      00364 _case#v(_casecount)
+                      00365 _casecount += 1
+                      00366                 xorlw   _caseval                ; restore previous value of W
+                      00367                 endm
+                      00368 
+                      00369 default         macro
+                      00370                 endm
+                      00371                 
+                      00006 
+                      00007  errorlevel  -302
+                      00008 
+                      00009 #define TRIS_PORTA B'001111'
+  30C4                00010  constant DEFAULT_CONFIG = _FOSC_INTOSCIO & _WDTE_OFF & _PWRTE_ON & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _B
+                            OREN_OFF & _IESO_OFF & _FCMEN_OFF
+                      00011 
+                      00012  cblock  0x20
+  00000020            00013 WTemp
+  00000021            00014 StatusTemp
+  00000022            00015 test
+                      00016  endc
+                      00017 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+                      00018 ; Begin Program Memory
+                      00019 ;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+0000                  00020         ORG                0x000                ;RESET 
+                      00021     
+0000                  00022 reset:
+                      00023     
+0000   2818           00024     goto main
+                      00025 
+0004                  00026         ORG                0x004                ;Interrupt 
+                      00027         
+0004   00A0           00028         movwf           WTemp           ;Save W register
+0005   0E03           00029         swapf           STATUS, W       ;Swap status to be saved into W
+0006   00A1           00030         movwf           StatusTemp      ;Save STATUS register
+                      00031 
+0007                  00032 interrupt:
+                      00033 
+                      00034  
+Warning[206]: Found call to macro in column 1. (bank0)
+                      00035 bank0
+0007   1283               M                 bcf     STATUS, RP0
+0008   1303               M                 bcf     STATUS, RP1
+Warning[203]: Found opcode in column 1. (movf)
+0009   0805           00036 movf PORTA,w
+                      00037 
+Warning[206]: Found call to macro in column 1. (bank1)
+                      00038 bank1
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+000A   1303               M            bcf  STATUS, RP1
+000B   1683               M                 bsf     STATUS, RP0
+000C   138B           00039  bcf  INTCON,GIE
+                      00040 
+                      00041 
+                      00042   
+Warning[206]: Found call to macro in column 1. (ifbs)
+                      00043 ifbs INTCON, RAIF
+                          M                 beginif
+  00000001                M _ifdepth += 1
+  00000001                M _labelcount += 1
+  00000001                M _ifnum1            = _labelcount
+000D   1C0B               M                 btfss   INTCON, RAIF
+000E   2811               M                 goto    _if1
+000F   100B           00044      bcf INTCON, RAIF
+                      00045         
+0010   2048           00046      call interrupt_dispatch
+                      00047         
+                      00048         
+                      00049         
+                      00050           
+                      00051    endif_ 
+0011                      M _if1
+  00000000                M _ifdepth -= 1
+                      00052 
+                      00053      
+                      00054   bank1 
+0011   1303               M            bcf  STATUS, RP1
+0012   1683               M                 bsf     STATUS, RP0
+                      00055         
+0013   178B           00056  bsf  INTCON,GIE
+                      00057     
+                      00058      
+0014   0083           00059         movwf   STATUS          ; restore STATUS register
+0015   0EA0           00060         swapf   WTemp, F
+0016   0E20           00061         swapf   WTemp, W                ; restore W register          
+                      00062         
+0017   0009           00063         retfie                    ;return from interrupt
+                      00064 
+0018                  00065 main: 
+                      00066 
+Warning[203]: Found opcode in column 1. (call)
+0018   2024           00067 call slave
+                      00068    
+Warning[203]: Found opcode in column 1. (clrf)
+0019   0187           00069 clrf PORTC
+                      00070 
+Warning[206]: Found call to macro in column 1. (bank1)
+                      00071 bank1
+001A   1303               M            bcf  STATUS, RP1
+001B   1683               M                 bsf     STATUS, RP0
+Warning[203]: Found opcode in column 1. (CLRF)
+001C   0191           00072 CLRF ANSEL
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Warning[203]: Found opcode in column 1. (CLRF)
+001D   0187           00073 CLRF  TRISC
+                      00074 
+                      00075     
+001E   130B           00076         bcf                     INTCON,PEIE
+001F   128B           00077         bcf                     INTCON,T0IE
+0020   120B           00078         bcf                     INTCON,INTE
+                      00079 
+                      00080   
+                      00081  
+                      00082 
+0021   158B           00083      bsf             INTCON, RAIE
+0022   178B           00084      bsf             INTCON, GIE
+                      00085 
+                      00086 
+0023                  00087 sonsuz:
+Warning[203]: Found opcode in column 1. (goto)
+0023   2823           00088 goto sonsuz
+                      00089 
+Warning[205]: Found directive in column 1. (include)
+                      00090 include    slave.asm
+                      00001 ;i2c asm source kodudur
+                      00002         
+                      00003         
+                      00004 
+0024                  00005 slave: 
+                      00006 
+                      00007 ;---------------------------------------------------------;
+                      00008 
+  0000                00009    constant SCL = 0             ; RA0 pini SCL secildi
+  0001                00010    constant SDA = 1             ; RA1 pini SDA secildi
+                      00011 
+  0000                00012    constant SCL_ANSEL = SCL     ; RA0/AN0 disable edilecek
+  0001                00013    constant SDA_ANSEL = SDA     ; RA1/AN1 disable edilecek
+                      00014   
+                      00015   
+                      00016  
+  0020                00017    constant SLAVE_VAR_BASE = 0x20 ; degiskenlerimiz bank0 daki                                          
+                                        0x20 adresinden itibaren                                                        sira
+                      00018  
+                      00019 
+                      00020 ;---------------------------------------------------------;
+                      00021 #define S_IDLE          state_idle
+                      00022 #define S_WAIT_ADDR     state_wait_addr
+                      00023 #define S_WAIT_RW       state_wait_rw
+                      00024 #define S_ACK_WAIT      state_ack_wait
+                      00025 #define S_ACK_RUNNING   state_ack_running
+                      00026 #define S_ACK_DONE      state_ack_done
+                      00027 #define S_WAIT_COMMAND  state_wait_command
+                      00028 #define S_WAIT_DATA     state_wait_data
+                      00029 
+                      00030 ;---------------------------------------------------------;
+                      00031 ;Communication sirasinda kullanacagimiz tum 8 bitlik ;degiskenleri 0x21 adresinden itibaren siraliyoruz.
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00032 
+  00000020            00033 STATE   equ     SLAVE_VAR_BASE ;  State machine deki state                                              
+                                      degeri 0x20 de tutulacak
+                      00034 
+                      00035 ; the value (address or data) we are acculumating off the wire
+  00000021            00036 ACCUM   equ     SLAVE_VAR_BASE + 0x01
+                      00037 
+                      00038 ; what address should this node use?
+                      00039 ; ### should we also have a compile-time constant?
+  00000022            00040 ADDRESS equ     SLAVE_VAR_BASE + 0x02
+                      00041 
+                      00042 ; Reading, or writing?
+  00000023            00043 RW_MODE equ     SLAVE_VAR_BASE + 0x03
+                      00044 
+                      00045 ; We need to save the (potential) DATA<7> value.
+  00000024            00046 DATA7   equ     SLAVE_VAR_BASE + 0x04
+                      00047 
+                      00048 ; How many bits are left to acquire from the bus?
+  00000025            00049 BCOUNT  equ     SLAVE_VAR_BASE + 0x05
+                      00050 
+                      00051 ;---------------------------------------------------------;
+                      00052 ;Communication sirasinda kullanilacak makrolari burada ;tanimliyoruz
+                      00053 
+                      00054 ; read the SDA port, placing 0 or 1 into W.
+                      00055 read_SDA: macro
+                      00056         bank0
+                      00057         movlw   1
+                      00058         btfss   PORTA, SDA
+                      00059         clrw
+                      00060         endm
+                      00061 
+                      00062 ; copy the SDA value to a register. REG is {0,1}
+                      00063 ; ### we'll likely move to bit storage soon
+                      00064 mov_SDA: macro REG
+                      00065         bank0
+                      00066         clrf    REG
+                      00067         btfsc   PORTA, SDA
+                      00068         bsf     REG, 0
+                      00069         endm
+                      00070 
+                      00071 
+                      00072 return_if_LOW: macro WHICH
+                      00073         bank0
+                      00074         btfss   PORTA, WHICH
+                      00075         return
+                      00076         endm
+                      00077 
+                      00078 return_if_HIGH: macro WHICH
+                      00079         bank0
+                      00080         btfsc   PORTA, WHICH
+                      00081         return
+                      00082         endm
+                      00083 
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00084 ; Rotate the SDA value into ACCUM's LSB via the Carry bit.
+                      00085 accum_SDA: macro
+                      00086         bank0
+                      00087         clrc
+                      00088         btfsc   PORTA, SDA
+                      00089         setc
+                      00090         rlf     ACCUM, F
+                      00091         endm
+                      00092 
+                      00093 ; Move to a new state, defined by magical PC offsets.
+                      00094 set_state: macro WHICH
+                      00095         bank0
+                      00096         movlw   WHICH - STATE_BASE
+                      00097         movwf   STATE
+                      00098         endm
+                      00099 
+                      00100 ; Jump to WHERE if REG1 == REG2.NOT =jumpeq makrosu cagirilmadan ;reg1 ve reg2 nin bulundugu bank a geci
+                            lmeli
+                      00101 
+                      00102 jumpeq: macro REG1, REG2, WHERE
+                      00103         movfw   REG1
+                      00104         xorwf   REG2, W         ; could use SUBWF
+                      00105         btfsc   STATUS, Z
+                      00106         goto    WHERE
+                      00107         endm
+                      00108 ;---------------------------------------------------------;
+                      00109 ;esas program burada basliyor, once disable comparator kismini
+                      00110 ;da cagiralim cunku A0 ve A1 pinlerini kullaniyoruz
+                      00111 
+                      00112 
+0024                  00113 listen:
+                      00114 
+                      00115         bank0
+0024   1283               M                 bcf     STATUS, RP0
+0025   1303               M                 bcf     STATUS, RP1
+0026   0819           00116         movfw   CMCON0
+0027   3907           00117         andlw   0x07            ; mask away the un-interesting 
+0028   1903 2832      00118         bz      set111          ; it was 000. transition to 111.
+002A   3A07           00119         xorlw   0x07
+002B   1903 2834      00120         bz      done            ; it was 111. leave alone.
+002D   0819           00121         movfw   CMCON0
+002E   3805           00122         iorlw   0x05            ; enable bits 0,2
+002F   39FD           00123         andlw   0xFD            ; disable bit 1
+0030   0099           00124         movwf   CMCON0          ; atomic change of config
+0031   2834           00125         goto    done
+                      00126 
+0032                  00127 set111:
+0032   3007           00128         movlw   0x07
+0033   0499           00129         iorwf   CMCON0, F       ; 000 -> 111
+                      00130         ; FALLTHRU
+                      00131 
+0034                  00132 done:
+                      00133         ; FALLTHRU
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00134     
+                      00135   
+                      00136 ;---------------------------------------------------------;
+                      00137        
+                      00138         bank0
+0034   1283               M                 bcf     STATUS, RP0
+0035   1303               M                 bcf     STATUS, RP1
+                      00139 
+                      00140         
+0036   3006           00141         movlw   h'06'                   ;0x06 i2c adresimiz olsun
+0037   00A2           00142         movwf   ADDRESS
+                      00143 
+                      00144 
+                      00145            bank1
+0038   1303               M            bcf  STATUS, RP1
+0039   1683               M                 bsf     STATUS, RP0
+                      00146 
+003A   1405           00147         bsf     TRISA, SCL              ;RA0 ve RA1 pinleri input oldu
+003B   1485           00148         bsf     TRISA, SDA
+                      00149   
+003C   1011           00150         bcf     ANSEL, SCL_ANSEL  ;RA0 ve RA1 analog select off
+003D   1091           00151         bcf     ANSEL, SDA_ANSEL
+                      00152 
+                      00153 
+003E                  00154 move_to_idle:
+003E   0196           00155         clrf    IOCA                    ;tum IOCA iptal
+003F   1496           00156            bsf     IOCA, SDA            ;RA1/SDA interrupt enable
+                      00157 
+0040                  00158 move_to_idle2:
+0040   1016           00159         bcf     IOCA, SCL               ;RA0/SCL iptalden emin olalim
+                      00160 
+                      00161         bank0                           ;TODO kaldirilabilr
+0041   1283               M                 bcf     STATUS, RP0
+0042   1303               M                 bcf     STATUS, RP1
+                      00162         set_state S_IDLE
+                          M         bank0
+0043   1283               M                 bcf     STATUS, RP0
+0044   1303               M                 bcf     STATUS, RP1
+0045   3000               M         movlw   state_idle - STATE_BASE
+0046   00A0               M         movwf   STATE
+                      00163 
+                      00164         ; bank0 da ciktik
+0047   0008           00165         return
+                      00166 
+                      00167 ;Burada baslatma rutini(slave) bitti. Bank0 da kaldik. Sda inter
+                      00168 ;rupt enable Scl interrupt disable.
+                      00169 ;---------------------------------------------------------;
+                      00170 
+                      00171 ;bu noktadan itibaren herhangi bir return isr den cikip sonsuz 
+                      00172 ;main dongusune gider.
+                      00173 
+0048                  00174 interrupt_dispatch:
+                      00175         bank0
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 14
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0048   1283               M                 bcf     STATUS, RP0
+0049   1303               M                 bcf     STATUS, RP1
+                      00176  
+                      00177 
+                      00178         ; NOTE: we assume this will not cross bank boundaries.
+004A   0820           00179         movfw   STATE
+004B   0782           00180         addwf   PCL, F          ; yay! variant GOTO!
+                      00181 
+004C                  00182 STATE_BASE:
+                      00183 
+004C                  00184 state_idle:
+                      00185     
+                      00186      ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+Warning[206]: Found call to macro in column 1. (return_if_LOW)
+                      00187 return_if_LOW   SCL  
+                          M         bank0
+004C   1283               M                 bcf     STATUS, RP0
+004D   1303               M                 bcf     STATUS, RP1
+004E   1C05               M         btfss   PORTA, SCL
+004F   0008               M         return
+                      00188     
+                      00189        
+                      00190        ; SCL yukaridayken SDA duserse bu start conditiondir.
+                      00191         set_state S_WAIT_ADDR
+                          M         bank0
+0050   1283               M                 bcf     STATUS, RP0
+0051   1303               M                 bcf     STATUS, RP1
+0052   3010               M         movlw   state_wait_addr - STATE_BASE
+0053   00A0               M         movwf   STATE
+                      00192 
+                      00193         ;ACCUM degiskenini sifirlar ve BCOUNT degiskenini 7 yap
+0054   01A1           00194         clrf    ACCUM
+0055   3007           00195         movlw   0x07
+0056   00A5           00196         movwf   BCOUNT
+                      00197 
+                      00198         ;SDA interrupt ini birakiyoruz SCL ile senkron olacagiz
+                      00199         bank1
+0057   1303               M            bcf  STATUS, RP1
+0058   1683               M                 bsf     STATUS, RP0
+0059   1416           00200         bsf     IOCA, SCL
+005A   1096           00201         bcf     IOCA, SDA
+                      00202 
+                      00203 
+005B   0008           00204         return  ;ornegin bu return bir sonraki SCL interrupt ini
+                      00205                         ; beklemek icin sonsuz main rutine geri doner.
+                      00206 
+                      00207 
+                      00208 
+005C                  00209 state_wait_addr:
+                      00210 
+                      00211 
+                      00212                 ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+                      00213         return_if_LOW   SCL
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 15
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                          M         bank0
+005C   1283               M                 bcf     STATUS, RP0
+005D   1303               M                 bcf     STATUS, RP1
+005E   1C05               M         btfss   PORTA, SCL
+005F   0008               M         return
+                      00214 
+                      00215         accum_SDA       ;bank0 a gecip SDA dan bir bit okuyup                                   ;ACCUM d
+                            egiskenine yaziyor ve bir sola                                  ;kaydiriyoruz
+                          M         bank0
+0060   1283               M                 bcf     STATUS, RP0
+0061   1303               M                 bcf     STATUS, RP1
+0062   1003               M         clrc
+0063   1885               M         btfsc   PORTA, SDA
+0064   1403               M         setc
+0065   0DA1               M         rlf     ACCUM, F
+                      00216        
+0066   0BA5           00217         decfsz  BCOUNT, F
+0067   2869           00218         goto    got_address ;7biti de aldiysak got_address e git
+                      00219 
+0068   0008           00220         return
+                      00221 
+0069                  00222 got_address:
+                      00223                 ;alinan adres dogruya rw bekle, degilse idle a don
+                      00224         jumpeq  ADDRESS, ACCUM, move_to_wait_rw
+0069   0822               M         movfw   ADDRESS
+006A   0621               M         xorwf   ACCUM, W        ; could use SUBWF
+006B   1903               M         btfsc   STATUS, Z
+006C   2871               M         goto    move_to_wait_rw
+006D   2871           00225         goto move_to_wait_rw
+                      00226        
+                      00227                 ;adres bizim degil, idle a gec SDA interrupt                          ;enable,SCL disabl
+                            e
+                      00228            bank1
+006E   1303               M            bcf  STATUS, RP1
+006F   1683               M                 bsf     STATUS, RP0
+0070   283E           00229         goto    move_to_idle
+                      00230 
+0071                  00231 move_to_wait_rw:
+                      00232         set_state S_WAIT_RW
+                          M         bank0
+0071   1283               M                 bcf     STATUS, RP0
+0072   1303               M                 bcf     STATUS, RP1
+0073   302A               M         movlw   state_wait_rw - STATE_BASE
+0074   00A0               M         movwf   STATE
+0075   0008           00233         return
+                      00234 
+                      00235 
+0076                  00236 state_wait_rw:
+                      00237         
+                      00238 
+                      00239         ;SCL nin yukselen kenarlarinda ornekleme yapacagiz.
+                      00240         return_if_LOW   SCL
+                          M         bank0
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 16
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0076   1283               M                 bcf     STATUS, RP0
+0077   1303               M                 bcf     STATUS, RP1
+0078   1C05               M         btfss   PORTA, SCL
+0079   0008               M         return
+                      00241 
+                      00242         ; RW_MODE un ilk bitine SDA degerini yaziyoruz.Aslinda             ;burada I2c read mi yoksa wri
+                            te mi olacak ayirt edip                    ;branch etmeliyiz ama henuz transmit kismi implement 
+                      00243         mov_SDA RW_MODE
+                          M         bank0
+007A   1283               M                 bcf     STATUS, RP0
+007B   1303               M                 bcf     STATUS, RP1
+007C   01A3               M         clrf    RW_MODE
+007D   1885               M         btfsc   PORTA, SDA
+007E   1423               M         bsf     RW_MODE, 0
+                      00244 
+007F   0008           00245         return
+                      00246 
+0080                  00247 move_to_ack_wait:
+                      00248 
+                      00249         set_state S_ACK_WAIT
+                          M         bank0
+0080   1283               M                 bcf     STATUS, RP0
+0081   1303               M                 bcf     STATUS, RP1
+0082   303D               M         movlw   state_ack_wait - STATE_BASE
+0083   00A0               M         movwf   STATE
+                      00250 
+                      00251         ; SDA loe yapip dijital out set ettik
+0084   1085           00252         bcf     PORTA, SDA
+                      00253         bank1
+0085   1303               M            bcf  STATUS, RP1
+0086   1683               M                 bsf     STATUS, RP0
+0087   1085           00254         bcf     TRISA, SDA
+                      00255 
+                      00256         ;bank 1 de geri donuyoruz dikkat!
+0088   0008           00257            return
+                      00258 
+                      00259 
+0089                  00260 state_ack_wait:
+                      00261         ;ACK master tarafindan alinsin diye SDA yi lowa cektik 
+                      00262            ; bekliyoruz
+                      00263         set_state S_ACK_RUNNING
+                          M         bank0
+0089   1283               M                 bcf     STATUS, RP0
+008A   1303               M                 bcf     STATUS, RP1
+008B   3042               M         movlw   state_ack_running - STATE_BASE
+008C   00A0               M         movwf   STATE
+                      00264 
+008D   0008           00265         return
+                      00266 
+                      00267 
+008E                  00268 state_ack_running:
+                      00269 
+                      00270         ;SCL dusukken ACK orneklenecek beklemeye devam
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 17
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00271         return_if_HIGH  SCL
+                          M         bank0
+008E   1283               M                 bcf     STATUS, RP0
+008F   1303               M                 bcf     STATUS, RP1
+0090   1805               M         btfsc   PORTA, SCL
+0091   0008               M         return
+                      00272 
+                      00273         ; siradakli yukselen SCL interrupti ile ACK done dir
+                      00274         set_state S_ACK_DONE
+                          M         bank0
+0092   1283               M                 bcf     STATUS, RP0
+0093   1303               M                 bcf     STATUS, RP1
+0094   304E               M         movlw   state_ack_done - STATE_BASE
+0095   00A0               M         movwf   STATE
+                      00275 
+                      00276         ; SDA yi tekrar input moduna getirelim
+                      00277         bank1
+0096   1303               M            bcf  STATUS, RP1
+0097   1683               M                 bsf     STATUS, RP0
+0098   1485           00278         bsf     TRISA, SDA
+                      00279 
+0099   0008           00280         return ; bank 1 de geri donuyoruz dikkat!
+                      00281 
+                      00282 
+009A                  00283 state_ack_done:
+                      00284         ;ilk yukselen SCL kenarunda DATA7 bitini al
+                      00285         mov_SDA DATA7
+                          M         bank0
+009A   1283               M                 bcf     STATUS, RP0
+009B   1303               M                 bcf     STATUS, RP1
+009C   01A4               M         clrf    DATA7
+009D   1885               M         btfsc   PORTA, SDA
+009E   1424               M         bsf     DATA7, 0
+                      00286 
+                      00287         set_state S_WAIT_COMMAND
+                          M         bank0
+009F   1283               M                 bcf     STATUS, RP0
+00A0   1303               M                 bcf     STATUS, RP1
+00A1   305B               M         movlw   state_wait_command - STATE_BASE
+00A2   00A0               M         movwf   STATE
+                      00288 
+                      00289         ; SDA interruptini da enable edip restart/stop biti                ;gelecek mi diye bakalim
+                      00290         bank1
+00A3   1303               M            bcf  STATUS, RP1
+00A4   1683               M                 bsf     STATUS, RP0
+00A5   1496           00291         bsf     IOCA, SDA
+                      00292 
+00A6   0008           00293         return ; bank 1 de donuyoruz dikkat
+                      00294 
+                      00295 
+00A7                  00296 state_wait_command:
+                      00297 
+                      00298         ;SCL en son yukselen kenardaydi. Burda degerine bakip SDA       ;mi SCL interrupt mi oldugunu ke
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 18
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                            stirebiliriz. SCL low sa        ;data devam ediyordur. Hala yuksekse SDA interrupt      ;gelmist
+                      00299 
+00A7   1C05           00300         btfss   PORTA, SCL
+00A8   28B3           00301         goto    data_command
+                      00302 
+                      00303         ;SDA interrupt sa start stop conditiona bakalim
+00A9   1C85           00304         btfss   PORTA, SDA
+00AA   28B0           00305         goto    stop_condition
+                      00306 
+                      00307         set_state S_WAIT_ADDR
+                          M         bank0
+00AB   1283               M                 bcf     STATUS, RP0
+00AC   1303               M                 bcf     STATUS, RP1
+00AD   3010               M         movlw   state_wait_addr - STATE_BASE
+00AE   00A0               M         movwf   STATE
+                      00308 
+00AF   0008           00309         return
+                      00310 
+00B0                  00311 stop_condition:
+                      00312         bank1
+00B0   1303               M            bcf  STATUS, RP1
+00B1   1683               M                 bsf     STATUS, RP0
+00B2   2840           00313         goto    move_to_idle2
+                      00314 
+00B3                  00315 data_command:
+                      00316 
+00B3   0824           00317         movfw   DATA7                   ;DATA7 de ilk bitimiz vardi
+00B4   00A1           00318         movwf   ACCUM                   ;ilk biti ACCUM a aldik
+00B5   3007           00319         movlw   0x07            ;BCOUNT a 7 yazalim loop icin
+00B6   00A5           00320         movwf   BCOUNT
+                      00321 
+                      00322         set_state S_WAIT_DATA
+                          M         bank0
+00B7   1283               M                 bcf     STATUS, RP0
+00B8   1303               M                 bcf     STATUS, RP1
+00B9   3073               M         movlw   state_wait_data - STATE_BASE
+00BA   00A0               M         movwf   STATE
+                      00323 
+                      00324         
+                      00325         bank1
+00BB   1303               M            bcf  STATUS, RP1
+00BC   1683               M                 bsf     STATUS, RP0
+00BD   1096           00326         bcf     IOCA, SDA
+                      00327 
+00BE   0008           00328         return          ;bank1 de cikiyoruz dikkat!
+                      00329 
+                      00330 
+00BF                  00331 state_wait_data:
+                      00332        ;SCL nin dusen kenarlarinda ornekleme yapmayalim
+                      00333         return_if_LOW   SCL
+                          M         bank0
+00BF   1283               M                 bcf     STATUS, RP0
+00C0   1303               M                 bcf     STATUS, RP1
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 19
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+00C1   1C05               M         btfss   PORTA, SCL
+00C2   0008               M         return
+                      00334 
+                      00335         ; SDA dan bir bit al ve bir sonraki interrup ti bekle
+                      00336         accum_SDA
+                          M         bank0
+00C3   1283               M                 bcf     STATUS, RP0
+00C4   1303               M                 bcf     STATUS, RP1
+00C5   1003               M         clrc
+00C6   1885               M         btfsc   PORTA, SDA
+00C7   1403               M         setc
+00C8   0DA1               M         rlf     ACCUM, F
+                      00337 
+                      00338         ;BCOUNT degeri 7 den 0 a dusene kadar SCL nin yukselen 
+                      00339            ;kenarlarinda SDA dan data alaim bitince ->got_data
+00C9   0BA5           00340            decfsz  BCOUNT, F
+00CA   28CC           00341         goto    got_data
+                      00342 
+                      00343         ; We don't have all the bits, so wait for more...
+00CB   0008           00344         return
+                      00345 
+00CC                  00346 got_data:
+                      00347                 ;artik datamiz ACCUM un icinde
+00CC   0821           00348            movf    ACCUM,0 ;ACCUM registerinin icerigi W ya yaz
+00CD   0087           00349            movwf   PORTC   ;Working register C portuna yaz
+                      00350         
+                      00351         
+00CE   2880           00352         goto    move_to_ack_wait
+                      00353 
+                      00354 
+                      00355 ; ### need routines to write data back to the master. obviously, this
+                      00356 ; ### will be based on how we handle the incoming data processing.
+                      00357 
+                      00358 
+                      00091  end
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 20
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ABDEN                             00000000
+ABDOVF                            00000007
+ACCUM                             00000021
+ADCON0                            0000001F
+ADCON1                            0000009F
+ADCS0                             00000004
+ADCS1                             00000005
+ADCS2                             00000006
+ADDEN                             00000003
+ADDRESS                           00000022
+ADFM                              00000007
+ADIE                              00000006
+ADIF                              00000006
+ADON                              00000000
+ADRESH                            0000001E
+ADRESL                            0000009E
+ANS0                              00000000
+ANS1                              00000001
+ANS2                              00000002
+ANS3                              00000003
+ANS4                              00000004
+ANS5                              00000005
+ANS6                              00000006
+ANS7                              00000007
+ANSEL                             00000091
+BAUDCTL                           00000011
+BCOUNT                            00000025
+BRG16                             00000003
+BRGH                              00000002
+C                                 00000000
+C1IE                              00000003
+C1IF                              00000003
+C1INV                             00000004
+C1OUT                             00000006
+C2IE                              00000004
+C2IF                              00000004
+C2INV                             00000005
+C2OUT                             00000007
+C2SYNC                            00000000
+CHS0                              00000002
+CHS1                              00000003
+CHS2                              00000004
+CIS                               00000003
+CM0                               00000000
+CM1                               00000001
+CM2                               00000002
+CMCON0                            00000019
+CMCON1                            0000001A
+CREN                              00000004
+CSRC                              00000007
+DATA7                             00000024
+DC                                00000001
+DEFAULT_CONFIG                    000030C4
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 21
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+EEADR                             0000009B
+EEADRH                            00000098
+EECON1                            0000009C
+EECON2                            0000009D
+EEDAT                             0000009A
+EEDATA                            0000009A
+EEDATH                            00000097
+EEIE                              00000007
+EEIF                              00000007
+EEPGD                             00000007
+F                                 00000001
+FERR                              00000002
+FSR                               00000004
+GIE                               00000007
+GO                                00000001
+GO_DONE                           00000001
+GO_NOT_DONE                       00000001
+HTS                               00000002
+INDF                              00000000
+INTCON                            0000000B
+INTE                              00000004
+INTEDG                            00000006
+INTF                              00000001
+IOC                               00000096
+IOC0                              00000000
+IOC1                              00000001
+IOC2                              00000002
+IOC3                              00000003
+IOC4                              00000004
+IOC5                              00000005
+IOCA                              00000096
+IOCA0                             00000000
+IOCA1                             00000001
+IOCA2                             00000002
+IOCA3                             00000003
+IOCA4                             00000004
+IOCA5                             00000005
+IRCF0                             00000004
+IRCF1                             00000005
+IRCF2                             00000006
+IRP                               00000007
+LTS                               00000001
+NOT_BOD                           00000000
+NOT_BOR                           00000000
+NOT_DONE                          00000001
+NOT_PD                            00000003
+NOT_POR                           00000001
+NOT_RAPU                          00000007
+NOT_T1SYNC                        00000002
+NOT_TO                            00000004
+OERR                              00000001
+OPTION_REG                        00000081
+OSCCON                            0000008F
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 22
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+OSCTUNE                           00000090
+OSFIE                             00000002
+OSFIF                             00000002
+OSTS                              00000003
+PCL                               00000002
+PCLATH                            0000000A
+PCON                              0000008E
+PEIE                              00000006
+PIE1                              0000008C
+PIR1                              0000000C
+PORTA                             00000005
+PORTC                             00000007
+PS0                               00000000
+PS1                               00000001
+PS2                               00000002
+PSA                               00000003
+RA0                               00000000
+RA1                               00000001
+RA2                               00000002
+RA3                               00000003
+RA4                               00000004
+RA5                               00000005
+RAIE                              00000003
+RAIF                              00000000
+RC0                               00000000
+RC1                               00000001
+RC2                               00000002
+RC3                               00000003
+RC4                               00000004
+RC5                               00000005
+RCIDL                             00000006
+RCIE                              00000005
+RCIF                              00000005
+RCREG                             00000014
+RCSTA                             00000017
+RD                                00000000
+RP0                               00000005
+RP1                               00000006
+RW_MODE                           00000023
+RX9                               00000006
+RX9D                              00000000
+SBODEN                            00000004
+SCKP                              00000004
+SCL                               00000000
+SCL_ANSEL                         00000000
+SCS                               00000000
+SDA                               00000001
+SDA_ANSEL                         00000001
+SENDB                             00000003
+SLAVE_VAR_BASE                    00000020
+SPBRG                             00000013
+SPBRGH                            00000012
+SPEN                              00000007
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 23
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+SREN                              00000005
+STATE                             00000020
+STATE_BASE                        0000004C
+STATUS                            00000003
+SWDTEN                            00000000
+SYNC                              00000004
+S_ACK_DONE                        state_ack_done
+S_ACK_RUNNING                     state_ack_running
+S_ACK_WAIT                        state_ack_wait
+S_IDLE                            state_idle
+S_WAIT_ADDR                       state_wait_addr
+S_WAIT_COMMAND                    state_wait_command
+S_WAIT_DATA                       state_wait_data
+S_WAIT_RW                         state_wait_rw
+StatusTemp                        00000021
+T0CS                              00000005
+T0IE                              00000005
+T0IF                              00000002
+T0SE                              00000004
+T1CKPS0                           00000004
+T1CKPS1                           00000005
+T1CON                             00000010
+T1GINV                            00000007
+T1GSS                             00000001
+T1IE                              00000000
+T1IF                              00000000
+T1OSCEN                           00000003
+TMR0                              00000001
+TMR0IE                            00000005
+TMR0IF                            00000002
+TMR1                              0000000E
+TMR1CS                            00000001
+TMR1GE                            00000006
+TMR1H                             0000000F
+TMR1IE                            00000000
+TMR1IF                            00000000
+TMR1L                             0000000E
+TMR1ON                            00000000
+TRISA                             00000085
+TRISA0                            00000000
+TRISA1                            00000001
+TRISA2                            00000002
+TRISA3                            00000003
+TRISA4                            00000004
+TRISA5                            00000005
+TRISC                             00000087
+TRISC0                            00000000
+TRISC1                            00000001
+TRISC2                            00000002
+TRISC3                            00000003
+TRISC4                            00000004
+TRISC5                            00000005
+TRIS_PORTA                        B'001111'
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 24
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+TRMT                              00000001
+TUN0                              00000000
+TUN1                              00000001
+TUN2                              00000002
+TUN3                              00000003
+TUN4                              00000004
+TX9                               00000006
+TX9D                              00000000
+TXEN                              00000005
+TXIE                              00000001
+TXIF                              00000001
+TXREG                             00000015
+TXSTA                             00000016
+ULPWUE                            00000005
+VCFG                              00000006
+VR0                               00000000
+VR1                               00000001
+VR2                               00000002
+VR3                               00000003
+VRCON                             00000099
+VREN                              00000007
+VRR                               00000005
+W                                 00000000
+WDTCON                            00000018
+WDTPS0                            00000001
+WDTPS1                            00000002
+WDTPS2                            00000003
+WDTPS3                            00000004
+WPU                               00000095
+WPU0                              00000000
+WPU1                              00000001
+WPU2                              00000002
+WPU4                              00000004
+WPU5                              00000005
+WPUA                              00000095
+WPUA0                             00000000
+WPUA1                             00000001
+WPUA2                             00000002
+WPUA4                             00000004
+WPUA5                             00000005
+WR                                00000001
+WREN                              00000002
+WRERR                             00000003
+WTemp                             00000020
+WUE                               00000001
+Z                                 00000002
+_BOD_NSLEEP                       00003EFF
+_BOD_OFF                          00003CFF
+_BOD_ON                           00003FFF
+_BOD_SBODEN                       00003DFF
+_BOREN_NSLEEP                     00003EFF
+_BOREN_OFF                        00003CFF
+_BOREN_ON                         00003FFF
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 25
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_BOREN_SBODEN                     00003DFF
+_BOR_NSLEEP                       00003EFF
+_BOR_OFF                          00003CFF
+_BOR_ON                           00003FFF
+_BOR_SBODEN                       00003DFF
+_CONFIG                           00002007
+_CPD_OFF                          00003FFF
+_CPD_ON                           00003F7F
+_CP_OFF                           00003FFF
+_CP_ON                            00003FBF
+_DEVID1                           00002006
+_EC_OSC                           00003FFB
+_EXTRC                            00003FFF
+_EXTRCIO                          00003FFE
+_EXTRC_OSC_CLKOUT                 00003FFF
+_EXTRC_OSC_NOCLKOUT               00003FFE
+_FCMEN_OFF                        000037FF
+_FCMEN_ON                         00003FFF
+_FOSC_EC                          00003FFB
+_FOSC_EXTRCCLK                    00003FFF
+_FOSC_EXTRCIO                     00003FFE
+_FOSC_HS                          00003FFA
+_FOSC_INTOSCCLK                   00003FFD
+_FOSC_INTOSCIO                    00003FFC
+_FOSC_LP                          00003FF8
+_FOSC_XT                          00003FF9
+_HS_OSC                           00003FFA
+_IDLOC0                           00002000
+_IDLOC1                           00002001
+_IDLOC2                           00002002
+_IDLOC3                           00002003
+_IESO_OFF                         00003BFF
+_IESO_ON                          00003FFF
+_INTOSC                           00003FFD
+_INTOSCIO                         00003FFC
+_INTRC_OSC_CLKOUT                 00003FFD
+_INTRC_OSC_NOCLKOUT               00003FFC
+_LP_OSC                           00003FF8
+_MCLRE_OFF                        00003FDF
+_MCLRE_ON                         00003FFF
+_PWRTE_OFF                        00003FFF
+_PWRTE_ON                         00003FEF
+_WDTE_OFF                         00003FF7
+_WDTE_ON                          00003FFF
+_WDT_OFF                          00003FF7
+_WDT_ON                           00003FFF
+_XT_OSC                           00003FF9
+__16F688                          00000001
+_bankflag                         00000000
+_blockdepth                       00000000
+_casecount                        00000000
+_if1                              00000011
+_ifdepth                          00000000
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 26
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+_ifnum1                           00000001
+_labelcount                       00000001
+_switchdepth                      00000000
+accum_SDA                         
+bank0                             
+bank1                             
+beginblock                        
+beginif                           
+beq                               
+bne                               
+break                             
+case                              
+continue                          
+data_command                      000000B3
+default                           
+done                              00000034
+else_                             
+endblock                          
+endcase                           
+endfrom                           
+endfrom16                         
+endif_                            
+endloop                           
+endswitch                         
+for                               
+from                              
+from16                            
+fromf                             
+fromw                             
+got_address                       00000069
+got_data                          000000CC
+ifbc                              
+ifbs                              
+ifeq                              
+ifgt                              
+ifle                              
+iflt                              
+ifne                              
+ifnz                              
+ifvgt                             
+ifweq                             
+ifwne                             
+ifz                               
+int_restore                       
+int_save                          
+interrupt                         00000007
+interrupt_dispatch                00000048
+jumpeq                            
+listen                            00000024
+loop                              
+main                              00000018
+mov_SDA                           
+move_to_ack_wait                  00000080
+MPASM  5.03                           I2C.ASM   12-22-2013  20:25:47         PAGE 27
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+move_to_idle                      0000003E
+move_to_idle2                     00000040
+move_to_wait_rw                   00000071
+next                              
+read_SDA                          
+redo                              
+reset                             00000000
+return_if_HIGH                    
+return_if_LOW                     
+set111                            00000032
+set_state                         
+slave                             00000024
+sonsuz                            00000023
+state_ack_done                    0000009A
+state_ack_running                 0000008E
+state_ack_wait                    00000089
+state_idle                        0000004C
+state_wait_addr                   0000005C
+state_wait_command                000000A7
+state_wait_data                   000000BF
+state_wait_rw                     00000076
+stop_condition                    000000B0
+switch                            
+test                              00000022
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+0000 : X---XXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0040 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+0080 : XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX XXXXXXXXXXXXXXXX
+00C0 : XXXXXXXXXXXXXXX- ---------------- ---------------- ----------------
+
+All other memory blocks unused.
+
+Program Memory Words Used:   204
+Program Memory Words Free:  3892
+
+
+Errors   :     0
+Warnings :    12 reported,     0 suppressed
+Messages :     0 reported,    15 suppressed
+
+

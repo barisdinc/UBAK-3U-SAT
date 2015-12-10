@@ -1,0 +1,19 @@
+[Project]
+Filename=C:\Projeler\Transponder_yenicalisma\CUBESAT_I2C_Debugger3.bas
+[Environment]
+CaretX=9
+CaretY=106
+[Version]
+Enable=1
+Rollover=255
+Major=0
+Minor=0
+Release=0
+Build=83
+[Results]
+Visible=1
+Height=117
+View=1
+[Status]
+Message=Success : 538 program words used, 69 variable bytes used
+Image=2

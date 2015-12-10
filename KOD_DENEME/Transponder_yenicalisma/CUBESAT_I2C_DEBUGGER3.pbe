@@ -1,0 +1,4 @@
+16F877,538,69,20
+Reminder! Line [4]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER3.BAS]	*** Ensure that all fuses are placed in the Config list, as devices have differing default settings! ***
+	PROGRAM COMPILED OK. 538 Words used from a possible 8192
+	69 Variables used in the 16F877 from a possible 368

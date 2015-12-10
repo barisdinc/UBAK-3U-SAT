@@ -1,0 +1,814 @@
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  1
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00001 ;i2c asm source kodudur
+                      00002         
+                      00003         
+                      00004 
+0000                  00005 slave: 
+                      00006 
+                      00007 ;---------------------------------------------------------;
+                      00008 
+  0000                00009    constant SCL = 0             ; RA0 pini SCL secildi
+  0001                00010    constant SDA = 1             ; RA1 pini SDA secildi
+                      00011 
+  0000                00012    constant SCL_ANSEL = SCL     ; RA0/AN0 disable edilecek
+  0001                00013    constant SDA_ANSEL = SDA     ; RA1/AN1 disable edilecek
+                      00014   
+                      00015   
+                      00016  
+  0020                00017    constant SLAVE_VAR_BASE = 0x20 ; degiskenlerimiz bank0 daki                                          
+                                        0x20 adresinden itibaren                                                        sira
+                      00018  
+                      00019 
+                      00020 ;---------------------------------------------------------;
+                      00021 #define S_IDLE          state_idle
+                      00022 #define S_WAIT_ADDR     state_wait_addr
+                      00023 #define S_WAIT_RW       state_wait_rw
+                      00024 #define S_ACK_WAIT      state_ack_wait
+                      00025 #define S_ACK_RUNNING   state_ack_running
+                      00026 #define S_ACK_DONE      state_ack_done
+                      00027 #define S_WAIT_COMMAND  state_wait_command
+                      00028 #define S_WAIT_DATA     state_wait_data
+                      00029 
+                      00030 ;---------------------------------------------------------;
+                      00031 ;Communication sirasinda kullanacagimiz tum 8 bitlik ;degiskenleri 0x21 adresinden itibaren siraliyoruz.
+                      00032 
+  00000020            00033 STATE   equ     SLAVE_VAR_BASE ;  State machine deki state                                              
+                                      degeri 0x20 de tutulacak
+                      00034 
+                      00035 ; the value (address or data) we are acculumating off the wire
+  00000021            00036 ACCUM   equ     SLAVE_VAR_BASE + 0x01
+                      00037 
+                      00038 ; what address should this node use?
+                      00039 ; ### should we also have a compile-time constant?
+  00000022            00040 ADDRESS equ     SLAVE_VAR_BASE + 0x02
+                      00041 
+                      00042 ; Reading, or writing?
+  00000023            00043 RW_MODE equ     SLAVE_VAR_BASE + 0x03
+                      00044 
+                      00045 ; We need to save the (potential) DATA<7> value.
+  00000024            00046 DATA7   equ     SLAVE_VAR_BASE + 0x04
+                      00047 
+                      00048 ; How many bits are left to acquire from the bus?
+  00000025            00049 BCOUNT  equ     SLAVE_VAR_BASE + 0x05
+                      00050 
+                      00051 ;---------------------------------------------------------;
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  2
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00052 ;Communication sirasinda kullanilacak makrolari burada ;tanimliyoruz
+                      00053 
+                      00054 ; read the SDA port, placing 0 or 1 into W.
+                      00055 read_SDA: macro
+                      00056         bank0
+                      00057         movlw   1
+                      00058         btfss   PORTA, SDA
+                      00059         clrw
+                      00060         endm
+                      00061 
+                      00062 ; copy the SDA value to a register. REG is {0,1}
+                      00063 ; ### we'll likely move to bit storage soon
+                      00064 mov_SDA: macro REG
+                      00065         bank0
+                      00066         clrf    REG
+                      00067         btfsc   PORTA, SDA
+                      00068         bsf     REG, 0
+                      00069         endm
+                      00070 
+                      00071 
+                      00072 return_if_LOW: macro WHICH
+                      00073         bank0
+                      00074         btfss   PORTA, WHICH
+                      00075         return
+                      00076         endm
+                      00077 
+                      00078 return_if_HIGH: macro WHICH
+                      00079         bank0
+                      00080         btfsc   PORTA, WHICH
+                      00081         return
+                      00082         endm
+                      00083 
+                      00084 ; Rotate the SDA value into ACCUM's LSB via the Carry bit.
+                      00085 accum_SDA: macro
+                      00086         bank0
+                      00087         clrc
+                      00088         btfsc   PORTA, SDA
+                      00089         setc
+                      00090         rlf     ACCUM, F
+                      00091         endm
+                      00092 
+                      00093 ; Move to a new state, defined by magical PC offsets.
+                      00094 set_state: macro WHICH
+                      00095         bank0
+                      00096         movlw   WHICH - STATE_BASE
+                      00097         movwf   STATE
+                      00098         endm
+                      00099 
+                      00100 ; Jump to WHERE if REG1 == REG2.NOT =jumpeq makrosu cagirilmadan ;reg1 ve reg2 nin bulundugu bank a geci
+                            lmeli
+                      00101 
+                      00102 jumpeq: macro REG1, REG2, WHERE
+                      00103         movfw   REG1
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  3
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00104         xorwf   REG2, W         ; could use SUBWF
+                      00105         btfsc   STATUS, Z
+                      00106         goto    WHERE
+                      00107         endm
+                      00108 ;---------------------------------------------------------;
+                      00109 ;esas program burada basliyor, once disable comparator kismini
+                      00110 ;da cagiralim cunku A0 ve A1 pinlerini kullaniyoruz
+                      00111 
+                      00112 
+0000                  00113 listen:
+                      00114 
+Warning[207]: Found label after column 1. (bank0)
+0000                  00115         bank0
+Warning[207]: Found label after column 1. (movfw)
+Error[122]  : Illegal opcode (CMCON0)
+0000                  00116         movfw   CMCON0
+Warning[207]: Found label after column 1. (andlw)
+Error[108]  : Illegal character (0)
+0000                  00117         andlw   0x07            ; mask away the un-interesting 
+Warning[207]: Found label after column 1. (bz)
+Error[122]  : Illegal opcode (set111)
+0000                  00118         bz      set111          ; it was 000. transition to 111.
+Warning[207]: Found label after column 1. (xorlw)
+Error[108]  : Illegal character (0)
+0000                  00119         xorlw   0x07
+Warning[207]: Found label after column 1. (bz)
+Error[122]  : Illegal opcode (done)
+0000                  00120         bz      done            ; it was 111. leave alone.
+Warning[207]: Found label after column 1. (movfw)
+Error[122]  : Illegal opcode (CMCON0)
+0000                  00121         movfw   CMCON0
+Warning[207]: Found label after column 1. (iorlw)
+Error[108]  : Illegal character (0)
+0000                  00122         iorlw   0x05            ; enable bits 0,2
+Warning[207]: Found label after column 1. (andlw)
+Error[108]  : Illegal character (0)
+0000                  00123         andlw   0xFD            ; disable bit 1
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (CMCON0)
+0000                  00124         movwf   CMCON0          ; atomic change of config
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (done)
+0000                  00125         goto    done
+                      00126 
+0000                  00127 set111:
+Warning[207]: Found label after column 1. (movlw)
+Error[108]  : Illegal character (0)
+0000                  00128         movlw   0x07
+Warning[207]: Found label after column 1. (iorwf)
+Error[122]  : Illegal opcode (CMCON0)
+0000                  00129         iorwf   CMCON0, F       ; 000 -> 111
+                      00130         ; FALLTHRU
+                      00131 
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  4
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0000                  00132 done:
+                      00133         ; FALLTHRU
+                      00134     
+                      00135   
+                      00136 ;---------------------------------------------------------;
+                      00137        
+Warning[207]: Found label after column 1. (bank0)
+0000                  00138         bank0
+                      00139 
+                      00140         
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (h)
+                      00141         movlw   h'06'                   ;0x06 i2c adresimiz olsun
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (ADDRESS)
+                      00142         movwf   ADDRESS
+                      00143 
+                      00144 
+Warning[207]: Found label after column 1. (bank1)
+0000                  00145            bank1
+                      00146 
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (TRISA)
+                      00147         bsf     TRISA, SCL              ;RA0 ve RA1 pinleri input oldu
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (TRISA)
+                      00148         bsf     TRISA, SDA
+                      00149   
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (ANSEL)
+                      00150         bcf     ANSEL, SCL_ANSEL  ;RA0 ve RA1 analog select off
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (ANSEL)
+                      00151         bcf     ANSEL, SDA_ANSEL
+                      00152 
+                      00153 
+0000                  00154 move_to_idle:
+Warning[207]: Found label after column 1. (clrf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00155         clrf    IOCA                    ;tum IOCA iptal
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00156            bsf     IOCA, SDA            ;RA1/SDA interrupt enable
+                      00157 
+0000                  00158 move_to_idle2:
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00159         bcf     IOCA, SCL               ;RA0/SCL iptalden emin olalim
+                      00160 
+Warning[207]: Found label after column 1. (bank0)
+0000                  00161         bank0                           ;TODO kaldirilabilr
+                      00162         set_state S_IDLE
+Warning[207]: Found label after column 1. (bank0)
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  5
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_idle)
+0000                      M         movlw   state_idle - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00163 
+                      00164         ; bank0 da ciktik
+Warning[207]: Found label after column 1. (return)
+0000                  00165         return
+                      00166 
+                      00167 ;Burada baslatma rutini(slave) bitti. Bank0 da kaldik. Sda inter
+                      00168 ;rupt enable Scl interrupt disable.
+                      00169 ;---------------------------------------------------------;
+                      00170 
+                      00171 ;bu noktadan itibaren herhangi bir return isr den cikip sonsuz 
+                      00172 ;main dongusune gider.
+                      00173 
+0000                  00174 interrupt_dispatch:
+Warning[207]: Found label after column 1. (bank0)
+0000                  00175         bank0
+                      00176  
+                      00177 
+                      00178         ; NOTE: we assume this will not cross bank boundaries.
+Warning[207]: Found label after column 1. (movfw)
+Error[122]  : Illegal opcode (STATE)
+                      00179         movfw   STATE
+Warning[207]: Found label after column 1. (addwf)
+Error[122]  : Illegal opcode (PCL)
+                      00180         addwf   PCL, F          ; yay! variant GOTO!
+                      00181 
+0000                  00182 STATE_BASE:
+                      00183 
+0000                  00184 state_idle:
+                      00185     
+                      00186      ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+Warning[206]: Found call to macro in column 1. (return_if_LOW)
+                      00187 return_if_LOW   SCL  
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (btfss)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfss   PORTA, SCL
+Warning[207]: Found label after column 1. (return)
+0000                      M         return
+                      00188     
+                      00189        
+                      00190        ; SCL yukaridayken SDA duserse bu start conditiondir.
+                      00191         set_state S_WAIT_ADDR
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  6
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Error[122]  : Illegal opcode (state_wait_addr)
+0000                      M         movlw   state_wait_addr - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00192 
+                      00193         ;ACCUM degiskenini sifirlar ve BCOUNT degiskenini 7 yap
+Warning[207]: Found label after column 1. (clrf)
+Error[122]  : Illegal opcode (ACCUM)
+                      00194         clrf    ACCUM
+Warning[207]: Found label after column 1. (movlw)
+Error[108]  : Illegal character (0)
+                      00195         movlw   0x07
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (BCOUNT)
+                      00196         movwf   BCOUNT
+                      00197 
+                      00198         ;SDA interrupt ini birakiyoruz SCL ile senkron olacagiz
+Warning[207]: Found label after column 1. (bank1)
+0000                  00199         bank1
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00200         bsf     IOCA, SCL
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00201         bcf     IOCA, SDA
+                      00202 
+                      00203 
+Warning[207]: Found label after column 1. (return)
+0000                  00204         return  ;ornegin bu return bir sonraki SCL interrupt ini
+                      00205                         ; beklemek icin sonsuz main rutine geri doner.
+                      00206 
+                      00207 
+                      00208 
+0000                  00209 state_wait_addr:
+                      00210 
+                      00211 
+                      00212                 ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+                      00213         return_if_LOW   SCL
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (btfss)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfss   PORTA, SCL
+Warning[207]: Found label after column 1. (return)
+0000                      M         return
+                      00214 
+                      00215         accum_SDA       ;bank0 a gecip SDA dan bir bit okuyup                                   ;ACCUM d
+                            egiskenine yaziyor ve bir sola                                  ;kaydiriyoruz
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (clrc)
+0000                      M         clrc
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  7
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Warning[207]: Found label after column 1. (btfsc)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfsc   PORTA, SDA
+Warning[207]: Found label after column 1. (setc)
+0000                      M         setc
+Warning[207]: Found label after column 1. (rlf)
+Error[122]  : Illegal opcode (ACCUM)
+0000                      M         rlf     ACCUM, F
+                      00216        
+Warning[207]: Found label after column 1. (decfsz)
+Error[122]  : Illegal opcode (BCOUNT)
+                      00217         decfsz  BCOUNT, F
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (got_address)
+                      00218         goto    got_address ;7biti de aldiysak got_address e git
+                      00219 
+Warning[207]: Found label after column 1. (return)
+0000                  00220         return
+                      00221 
+0000                  00222 got_address:
+                      00223                 ;alinan adres dogruya rw bekle, degilse idle a don
+                      00224         jumpeq  ADDRESS, ACCUM, move_to_wait_rw
+Warning[207]: Found label after column 1. (movfw)
+Error[122]  : Illegal opcode (ADDRESS)
+                      00103         movfw   ADDRESS
+Warning[207]: Found label after column 1. (xorwf)
+Error[122]  : Illegal opcode (ACCUM)
+                      00104         xorwf   ACCUM, W        ; could use SUBWF
+Warning[207]: Found label after column 1. (btfsc)
+Error[122]  : Illegal opcode (STATUS)
+                      00105         btfsc   STATUS, Z
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (move_to_wait_rw)
+                      00106         goto    move_to_wait_rw
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (move_to_wait_rw)
+                      00225         goto move_to_wait_rw
+                      00226        
+                      00227                 ;adres bizim degil, idle a gec SDA interrupt                          ;enable,SCL disabl
+                            e
+Warning[207]: Found label after column 1. (bank1)
+0000                  00228            bank1
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (move_to_idle)
+0000                  00229         goto    move_to_idle
+                      00230 
+0000                  00231 move_to_wait_rw:
+                      00232         set_state S_WAIT_RW
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_wait_rw)
+0000                      M         movlw   state_wait_rw - STATE_BASE
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  8
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+Warning[207]: Found label after column 1. (return)
+0000                  00233         return
+                      00234 
+                      00235 
+0000                  00236 state_wait_rw:
+                      00237         
+                      00238 
+                      00239         ;SCL nin yukselen kenarlarinda ornekleme yapacagiz.
+                      00240         return_if_LOW   SCL
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (btfss)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfss   PORTA, SCL
+Warning[207]: Found label after column 1. (return)
+0000                      M         return
+                      00241 
+                      00242         ; RW_MODE un ilk bitine SDA degerini yaziyoruz.Aslinda             ;burada I2c read mi yoksa wri
+                            te mi olacak ayirt edip                    ;branch etmeliyiz ama henuz transmit kismi implement 
+                      00243         mov_SDA RW_MODE
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (clrf)
+Error[122]  : Illegal opcode (RW_MODE)
+0000                      M         clrf    RW_MODE
+Warning[207]: Found label after column 1. (btfsc)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfsc   PORTA, SDA
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (RW_MODE)
+0000                      M         bsf     RW_MODE, 0
+                      00244 
+Warning[207]: Found label after column 1. (return)
+0000                  00245         return
+                      00246 
+0000                  00247 move_to_ack_wait:
+                      00248 
+                      00249         set_state S_ACK_WAIT
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_ack_wait)
+0000                      M         movlw   state_ack_wait - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00250 
+                      00251         ; SDA loe yapip dijital out set ettik
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (PORTA)
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE  9
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00252         bcf     PORTA, SDA
+Warning[207]: Found label after column 1. (bank1)
+0000                  00253         bank1
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (TRISA)
+0000                  00254         bcf     TRISA, SDA
+                      00255 
+                      00256         ;bank 1 de geri donuyoruz dikkat!
+Warning[207]: Found label after column 1. (return)
+0000                  00257            return
+                      00258 
+                      00259 
+0000                  00260 state_ack_wait:
+                      00261         ;ACK master tarafindan alinsin diye SDA yi lowa cektik 
+                      00262            ; bekliyoruz
+                      00263         set_state S_ACK_RUNNING
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_ack_running)
+0000                      M         movlw   state_ack_running - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00264 
+Warning[207]: Found label after column 1. (return)
+0000                  00265         return
+                      00266 
+                      00267 
+0000                  00268 state_ack_running:
+                      00269 
+                      00270         ;SCL dusukken ACK orneklenecek beklemeye devam
+                      00271         return_if_HIGH  SCL
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (btfsc)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfsc   PORTA, SCL
+Warning[207]: Found label after column 1. (return)
+0000                      M         return
+                      00272 
+                      00273         ; siradakli yukselen SCL interrupti ile ACK done dir
+                      00274         set_state S_ACK_DONE
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_ack_done)
+0000                      M         movlw   state_ack_done - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00275 
+                      00276         ; SDA yi tekrar input moduna getirelim
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE 10
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+Warning[207]: Found label after column 1. (bank1)
+0000                  00277         bank1
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (TRISA)
+0000                  00278         bsf     TRISA, SDA
+                      00279 
+Warning[207]: Found label after column 1. (return)
+0000                  00280         return ; bank 1 de geri donuyoruz dikkat!
+                      00281 
+                      00282 
+0000                  00283 state_ack_done:
+                      00284         ;ilk yukselen SCL kenarunda DATA7 bitini al
+                      00285         mov_SDA DATA7
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (clrf)
+Error[122]  : Illegal opcode (DATA7)
+0000                      M         clrf    DATA7
+Warning[207]: Found label after column 1. (btfsc)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfsc   PORTA, SDA
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (DATA7)
+0000                      M         bsf     DATA7, 0
+                      00286 
+                      00287         set_state S_WAIT_COMMAND
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_wait_command)
+0000                      M         movlw   state_wait_command - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00288 
+                      00289         ; SDA interruptini da enable edip restart/stop biti                ;gelecek mi diye bakalim
+Warning[207]: Found label after column 1. (bank1)
+0000                  00290         bank1
+Warning[207]: Found label after column 1. (bsf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00291         bsf     IOCA, SDA
+                      00292 
+Warning[207]: Found label after column 1. (return)
+0000                  00293         return ; bank 1 de donuyoruz dikkat
+                      00294 
+                      00295 
+0000                  00296 state_wait_command:
+                      00297 
+                      00298         ;SCL en son yukselen kenardaydi. Burda degerine bakip SDA       ;mi SCL interrupt mi oldugunu ke
+                            stirebiliriz. SCL low sa        ;data devam ediyordur. Hala yuksekse SDA interrupt      ;gelmist
+                      00299 
+Warning[207]: Found label after column 1. (btfss)
+Error[122]  : Illegal opcode (PORTA)
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE 11
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+                      00300         btfss   PORTA, SCL
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (data_command)
+                      00301         goto    data_command
+                      00302 
+                      00303         ;SDA interrupt sa start stop conditiona bakalim
+Warning[207]: Found label after column 1. (btfss)
+Error[122]  : Illegal opcode (PORTA)
+                      00304         btfss   PORTA, SDA
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (stop_condition)
+                      00305         goto    stop_condition
+                      00306 
+                      00307         set_state S_WAIT_ADDR
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_wait_addr)
+0000                      M         movlw   state_wait_addr - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00308 
+Warning[207]: Found label after column 1. (return)
+0000                  00309         return
+                      00310 
+0000                  00311 stop_condition:
+Warning[207]: Found label after column 1. (bank1)
+0000                  00312         bank1
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (move_to_idle2)
+0000                  00313         goto    move_to_idle2
+                      00314 
+0000                  00315 data_command:
+                      00316 
+Warning[207]: Found label after column 1. (movfw)
+Error[122]  : Illegal opcode (DATA7)
+                      00317         movfw   DATA7                   ;DATA7 de ilk bitimiz vardi
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (ACCUM)
+                      00318         movwf   ACCUM                   ;ilk biti ACCUM a aldik
+Warning[207]: Found label after column 1. (movlw)
+Error[108]  : Illegal character (0)
+                      00319         movlw   0x07            ;BCOUNT a 7 yazalim loop icin
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (BCOUNT)
+                      00320         movwf   BCOUNT
+                      00321 
+                      00322         set_state S_WAIT_DATA
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (movlw)
+Error[122]  : Illegal opcode (state_wait_data)
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE 12
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0000                      M         movlw   state_wait_data - STATE_BASE
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (STATE)
+0000                      M         movwf   STATE
+                      00323 
+                      00324         
+Warning[207]: Found label after column 1. (bank1)
+0000                  00325         bank1
+Warning[207]: Found label after column 1. (bcf)
+Error[122]  : Illegal opcode (IOCA)
+0000                  00326         bcf     IOCA, SDA
+                      00327 
+Warning[207]: Found label after column 1. (return)
+0000                  00328         return          ;bank1 de cikiyoruz dikkat!
+                      00329 
+                      00330 
+0000                  00331 state_wait_data:
+                      00332        ;SCL nin dusen kenarlarinda ornekleme yapmayalim
+                      00333         return_if_LOW   SCL
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (btfss)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfss   PORTA, SCL
+Warning[207]: Found label after column 1. (return)
+0000                      M         return
+                      00334 
+                      00335         ; SDA dan bir bit al ve bir sonraki interrup ti bekle
+                      00336         accum_SDA
+Warning[207]: Found label after column 1. (bank0)
+0000                      M         bank0
+Warning[207]: Found label after column 1. (clrc)
+0000                      M         clrc
+Warning[207]: Found label after column 1. (btfsc)
+Error[122]  : Illegal opcode (PORTA)
+0000                      M         btfsc   PORTA, SDA
+Warning[207]: Found label after column 1. (setc)
+0000                      M         setc
+Warning[207]: Found label after column 1. (rlf)
+Error[122]  : Illegal opcode (ACCUM)
+0000                      M         rlf     ACCUM, F
+                      00337 
+                      00338         ;BCOUNT degeri 7 den 0 a dusene kadar SCL nin yukselen 
+                      00339            ;kenarlarinda SDA dan data alaim bitince ->got_data
+Warning[207]: Found label after column 1. (decfsz)
+Error[122]  : Illegal opcode (BCOUNT)
+                      00340            decfsz  BCOUNT, F
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (got_data)
+                      00341         goto    got_data
+                      00342 
+                      00343         ; We don't have all the bits, so wait for more...
+Warning[207]: Found label after column 1. (return)
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE 13
+
+
+LOC  OBJECT CODE     LINE SOURCE TEXT
+  VALUE
+
+0000                  00344         return
+                      00345 
+0000                  00346 got_data:
+                      00347                 ;artik datamiz ACCUM un icinde
+Warning[207]: Found label after column 1. (movf)
+Error[122]  : Illegal opcode (ACCUM)
+                      00348            movf    ACCUM,0 ;ACCUM registerinin icerigi W ya yaz
+Warning[207]: Found label after column 1. (movwf)
+Error[122]  : Illegal opcode (PORTC)
+                      00349            movwf   PORTC   ;Working register C portuna yaz
+                      00350         
+                      00351         
+Warning[207]: Found label after column 1. (goto)
+Error[122]  : Illegal opcode (move_to_ack_wait)
+                      00352         goto    move_to_ack_wait
+                      00353 
+                      00354 
+                      00355 ; ### need routines to write data back to the master. obviously, this
+                      00356 ; ### will be based on how we handle the incoming data processing.
+                      00357 
+                      00358 
+Error[129]  : Expected (END)
+Error[131]  : Processor type is undefined
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE 14
+
+
+SYMBOL TABLE
+  LABEL                             VALUE 
+
+ACCUM                             00000021
+ADDRESS                           00000022
+BCOUNT                            00000025
+DATA7                             00000024
+RW_MODE                           00000023
+SCL                               00000000
+SCL_ANSEL                         00000000
+SDA                               00000001
+SDA_ANSEL                         00000001
+SLAVE_VAR_BASE                    00000020
+STATE                             00000020
+STATE_BASE                        00000000
+S_ACK_DONE                        state_ack_done
+S_ACK_RUNNING                     state_ack_running
+S_ACK_WAIT                        state_ack_wait
+S_IDLE                            state_idle
+S_WAIT_ADDR                       state_wait_addr
+S_WAIT_COMMAND                    state_wait_command
+S_WAIT_DATA                       state_wait_data
+S_WAIT_RW                         state_wait_rw
+accum_SDA                         
+bank0                             00000000
+bank1                             00000000
+clrc                              00000000
+data_command                      00000000
+done                              00000000
+got_address                       00000000
+got_data                          00000000
+interrupt_dispatch                00000000
+jumpeq                            
+listen                            00000000
+mov_SDA                           
+move_to_ack_wait                  00000000
+move_to_idle                      00000000
+move_to_idle2                     00000000
+move_to_wait_rw                   00000000
+read_SDA                          
+return                            00000000
+return_if_HIGH                    
+return_if_LOW                     
+set111                            00000000
+set_state                         
+setc                              00000000
+slave                             00000000
+state_ack_done                    00000000
+state_ack_running                 00000000
+state_ack_wait                    00000000
+state_idle                        00000000
+state_wait_addr                   00000000
+state_wait_command                00000000
+state_wait_data                   00000000
+state_wait_rw                     00000000
+stop_condition                    00000000
+MPASM  5.03                         SLAVE.ASM   12-22-2013  20:18:38         PAGE 15
+
+
+MEMORY USAGE MAP ('X' = Used,  '-' = Unused)
+
+
+
+All other memory blocks unused.
+
+Program Memory Words Used:     0
+Program Memory Words Free:     1
+
+
+Errors   :    90
+Warnings :   140 reported,     0 suppressed
+Messages :     0 reported,     0 suppressed
+
+

@@ -1,0 +1,968 @@
+,,,;baslangic
+,,, list        p=16F688        ; list directive to define processor
+,,,
+,,, include    p16f688.inc
+,,,
+,,,;==========================================================================
+,,,;  MPASM PIC16F688 processor include
+,,,;
+,,,;  (c) Copyright 1999-2013 Microchip Technology, All rights reserved
+,,,;==========================================================================
+,,,
+,,, include    macros.inc
+,,,;----------------------------------------------------------------------
+,,,; File : macros.inc
+,,,;       Macros for MPASM
+,,,;
+,,,; Author:
+,,,;       Robert F. Nee
+,,,;       robnee@robnee.com
+,,,;
+,,,; Revisions:
+,,,;       last delta :  02/04/04 20:13:28
+,,,;
+,,,; 1/6/04
+,,,; Redesigned switch case to jump out of the switch statement if
+,,,; endcase is used.  endcase can be omitted after the last case for
+,,,; efficiency
+,,,;
+,,,;               noexpand
+,,,
+,,,;----------------------------------------------------------------------
+,,,; Variables for macros
+,,,
+,,,                variable _labelcount = 0
+,,,                variable _blockdepth = 0
+,,,                variable _switchdepth = 0
+,,,                variable _casecount = 0
+,,,                variable _ifdepth = 0
+,,,                variable _bankflag = 0
+,,,
+,,,;----------------------------------------------------------------------
+,,,; bank0 - switch to register bank 0
+,,,
+,,,
+,,,
+,,,bank0           macro
+,,,                bcf     STATUS, RP0
+,,,                bcf     STATUS, RP1
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; bank1 - switch to register bank 1
+,,,
+,,,bank1           macro
+,,,           bcf  STATUS, RP1
+,,,                bsf     STATUS, RP0
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; Save and restore registers
+,,,
+,,,int_save        macro
+,,,                movwf   w_temp
+,,,                swapf   STATUS, w
+,,,                movwf   status_temp
+,,,                endm
+,,,
+,,,int_restore     macro
+,,,                swapf   status_temp, w
+,,,                movwf   STATUS
+,,,
+,,,                swapf   w_temp, f
+,,,                swapf   w_temp, w
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; beq - Branch equal
+,,,
+,,,beq             macro   address
+,,,                btfsc   STATUS, Z
+,,,                goto    address
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; bne - Branch not equal
+,,,
+,,,bne             macro   address
+,,,                btfss   STATUS, Z
+,,,                goto    address
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,
+,,,beginif         macro
+,,,_ifdepth += 1
+,,,_labelcount += 1
+,,,_ifnum#v(_ifdepth) = _labelcount
+,,,                        endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; ifweq - if W = <val> do block else do other block
+,,,
+,,,ifweq   macro   val
+,,,                beginif
+,,,                sublw   val
+,,,                btfss   STATUS, Z
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifwne   macro   val
+,,,                beginif
+,,,                sublw   val
+,,,                btfsc   STATUS, Z
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; ifeq - if <var> = <val> do block else do other block
+,,,
+,,,ifeq    macro   var, val
+,,,                beginif
+,,,                movfw   var
+,,,                sublw   val
+,,,                btfss   STATUS, Z
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifne    macro   var, val
+,,,                beginif
+,,,                movfw   var
+,,,                sublw   val
+,,,                btfsc   STATUS, Z
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifgt    macro   var, val
+,,,                beginif
+,,,                movfw   var
+,,,                sublw   val
+,,,                btfsc   STATUS, C
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,iflt    macro   var, val
+,,,                beginif
+,,,                movfw   var
+,,,                sublw   val - 1
+,,,                btfss   STATUS, C
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifle    macro   var, val
+,,,                beginif
+,,,                movfw   var
+,,,                sublw   val
+,,,                btfss   STATUS, C
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifz             macro
+,,,                beginif
+,,,                btfss   STATUS, Z
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifnz    macro
+,,,                beginif
+,,,                btfsc   STATUS, Z
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifbs    macro   reg, bit
+,,,                beginif
+,,,                btfss   reg, bit
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifbc    macro   reg, bit
+,,,                beginif
+,,,                btfsc   reg, bit
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,ifvgt   macro   rega, regb
+,,,                beginif
+,,,                movf    rega, w
+,,,                subwf   regb, w
+,,,                btfsc   STATUS, C
+,,,                goto    _if#v(_ifnum#v(_ifdepth))
+,,,                endm
+,,,
+,,,else_   macro
+,,,_labelcount += 1
+,,,                goto    _if#v(_labelcount)
+,,,_if#v(_ifnum#v(_ifdepth))
+,,,_ifnum#v(_ifdepth) = _labelcount
+,,,                endm
+,,,
+,,,endif_  macro
+,,,_if#v(_ifnum#v(_ifdepth))
+,,,_ifdepth -= 1
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; begin/endblock - housekeeping for the beginning and end of program blocks
+,,,
+,,,beginblock      macro
+,,,_blockdepth += 1
+,,,_labelcount += 1
+,,,_blocknum#v(_blockdepth) = _labelcount
+,,,                endm
+,,,
+,,,endblock        macro
+,,,_endblock#v(_blocknum#v(_blockdepth))
+,,,_blockdepth -= 1
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; loop - loop endlessly
+,,,
+,,,loop            macro
+,,,                beginblock
+,,,_looptest#v(_blocknum#v(_blockdepth))
+,,,_loop#v(_blocknum#v(_blockdepth))
+,,,                endm
+,,,
+,,,endloop         macro
+,,,                redo
+,,,                endblock
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; from - Count <var> down from <start> to zero
+,,,
+,,,from            macro   var, start
+,,,                beginblock
+,,,                movlw   start
+,,,                movwf   var
+,,,_loop#v(_blocknum#v(_blockdepth))
+,,,_loopvar#v(_blockdepth) = var
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; from - Count <var> down from value in <reg> to zero
+,,,
+,,,fromf           macro   var, reg
+,,,                beginblock
+,,,                movfw   reg
+,,,                movwf   var
+,,,                addlw   0                       ; Test for null loop
+,,,                btfsc   STATUS, Z
+,,,                break
+,,,_loop#v(_blocknum#v(_blockdepth))
+,,,_loopvar#v(_blockdepth) = var
+,,,                endm
+,,,;----------------------------------------------------------------------
+,,,; from - Count <var> down from value in W to zero
+,,,
+,,,fromw           macro   var
+,,,                beginblock
+,,,                movwf   var
+,,,                addlw   0                       ; Test for null loop
+,,,                btfsc   STATUS, Z
+,,,                break
+,,,_loop#v(_blocknum#v(_blockdepth))
+,,,_loopvar#v(_blockdepth) = var
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,
+,,,endfrom         macro
+,,,_looptest#v(_blocknum#v(_blockdepth))
+,,,                decfsz  _loopvar#v(_blockdepth), f
+,,,                redo
+,,,                endblock
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; from16 - Count 16bit <var> down from <start> to zero
+,,,
+,,,from16          macro   var, start
+,,,                beginblock
+,,,                movlw   LOW start
+,,,                movwf   var
+,,,                movlw   HIGH (start - 1) + 1
+,,,                movwf   var + 1
+,,,_loop#v(_blocknum#v(_blockdepth))
+,,,_loopvar#v(_blockdepth) = var
+,,,                endm
+,,,
+,,,endfrom16       macro
+,,,_looptest#v(_blocknum#v(_blockdepth))
+,,,                decfsz  _loopvar#v(_blockdepth), f
+,,,                 redo
+,,,                decfsz  _loopvar#v(_blockdepth) + 1, f
+,,,                 redo
+,,,                endblock
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; for - loop <var> from <start> to <stop> inclusive
+,,,
+,,,for             macro   var, start, stop
+,,,                beginblock
+,,,                movlw   start
+,,,                movwf   var
+,,,                goto    $ + 2           ; skip over the increment first time
+,,,_looptest#v(_blocknum#v(_blockdepth))
+,,,                if stop > start         ; increment or decrement
+,,,                 incf   var, f
+,,,                 movfw  var
+,,,                 sublw  stop
+,,,                 btfss  STATUS, C
+,,,                else
+,,,                 decf   var, f
+,,,                 movfw  var
+,,,                 sublw  stop - 1
+,,,                 btfsc  STATUS, C
+,,,                endif
+,,,                break
+,,,_loop#v(_blocknum#v(_blockdepth))
+,,,_loopvar#v(_blockdepth) = var
+,,,                endm
+,,,
+,,,next            macro
+,,,                continue
+,,,                endblock
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; break - break out of the current block
+,,,
+,,,break           macro
+,,,                goto    _endblock#v(_blocknum#v(_blockdepth))
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; continue - jump to the next loop iteration
+,,,
+,,,continue        macro
+,,,                goto    _looptest#v(_blocknum#v(_blockdepth))
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; redo - jump to the beginning of the block bypassing any loop test code
+,,,
+,,,redo            macro
+,,,                goto _loop#v(_blocknum#v(_blockdepth))
+,,,                endm
+,,,
+,,,;----------------------------------------------------------------------
+,,,; switch/case - simulates C-style switch and case statements.  Value
+,,,; to be tested is in W.  break is used to exit each case.
+,,,
+,,,switch  macro
+,,,_casecount += 1
+,,,_labelcount += 1
+,,,_switchdepth += 1
+,,,_switchnum#v(_switchdepth) = _labelcount
+,,,                endm
+,,,
+,,,endswitch       macro
+,,,_endswitch#v(_switchnum#v(_switchdepth))
+,,,_case#v(_casecount)
+,,,_switchdepth -= 1
+,,,                endm
+,,,
+,,,case            macro   val
+,,,_caseval = val
+,,,                xorlw   val
+,,,                bne     _case#v(_casecount)
+,,,                endm
+,,,
+,,,endcase         macro
+,,,                goto    _endswitch#v(_switchnum#v(_switchdepth))
+,,,_case#v(_casecount)
+,,,_casecount += 1
+,,,                xorlw   _caseval                ; restore previous value of W
+,,,                endm
+,,,
+,,,default         macro
+,,,                endm
+,,,
+,,,
+,,, errorlevel  -302
+,,,
+,,,#define TRIS_PORTA B'001111'
+,,, constant DEFAULT_CONFIG = _FOSC_INTOSCIO & _WDTE_OFF & _PWRTE_ON & _MCLRE_OFF & _CP_OFF & _CPD_OFF & _B
+,,,
+,,, cblock  0x20
+,,,WTemp
+,,,StatusTemp
+,,,test
+,,, endc
+,,,;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+,,,; Begin Program Memory
+,,,;~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+00000000,,,        ORG                0x000                ;RESET
+,,,
+00000000,,reset:,reset:
+,,,
+00000000,2818,,    goto main
+,,,
+00000004,,,        ORG                0x004                ;Interrupt
+,,,
+00000004,00A0,,        movwf           WTemp           ;Save W register
+00000005,0E03,,        swapf           STATUS, W       ;Swap status to be saved into W
+00000006,00A1,,        movwf           StatusTemp      ;Save STATUS register
+,,,
+00000007,,interrupt:,interrupt:
+,,,
+,,,
+,,,bank0
+00000007,1283,,                - bcf     STATUS, RP0
+00000008,1303,,                - bcf     STATUS, RP1
+00000009,0805,movf,movf PORTA,w
+,,,
+,,,bank1
+0000000A,1303,,           - bcf  STATUS, RP1
+0000000B,1683,,                - bsf     STATUS, RP0
+0000000C,138B,, bcf  INTCON,GIE
+,,,
+,,,
+,,,
+,,,ifbs INTCON, RAIF
+,,,                - beginif
+,,,- _ifdepth += 1
+,,,- _labelcount += 1
+,,,- _ifnum1            = _labelcount
+0000000D,1C0B,,                - btfss   INTCON, RAIF
+0000000E,2811,,                - goto    _if1
+0000000F,100B,,     bcf INTCON, RAIF
+,,,
+00000010,2048,,     call interrupt_dispatch
+,,,
+,,,
+,,,
+,,,
+,,,   endif_
+00000011,,,- _if1
+,,,- _ifdepth -= 1
+,,,
+,,,
+,,,  bank1
+00000011,1303,,           - bcf  STATUS, RP1
+00000012,1683,,                - bsf     STATUS, RP0
+,,,
+00000013,178B,, bsf  INTCON,GIE
+,,,
+,,,
+00000014,0083,,        movwf   STATUS          ; restore STATUS register
+00000015,0EA0,,        swapf   WTemp, F
+00000016,0E20,,        swapf   WTemp, W                ; restore W register
+,,,
+00000017,0009,,        retfie                    ;return from interrupt
+,,,
+00000018,,main:,main:
+,,,
+00000018,2024,call,call slave
+,,,
+00000019,0187,clrf,clrf PORTC
+,,,
+,,,bank1
+0000001A,1303,,           - bcf  STATUS, RP1
+0000001B,1683,,                - bsf     STATUS, RP0
+0000001C,0191,CLRF,CLRF ANSEL
+0000001D,0187,CLRF,CLRF  TRISC
+,,,
+,,,
+0000001E,130B,,        bcf                     INTCON,PEIE
+0000001F,128B,,        bcf                     INTCON,T0IE
+00000020,120B,,        bcf                     INTCON,INTE
+,,,
+,,,
+,,,
+,,,
+00000021,158B,,     bsf             INTCON, RAIE
+00000022,178B,,     bsf             INTCON, GIE
+,,,
+,,,
+00000023,,sonsuz:,sonsuz:
+00000023,2823,goto,goto sonsuz
+,,,
+,,,include    slave.asm
+,,,;i2c asm source kodudur
+,,,
+,,,
+,,,
+00000024,,slave:,slave:
+,,,
+,,,;---------------------------------------------------------;
+,,,
+,,,   constant SCL = 0             ; RA0 pini SCL secildi
+,,,   constant SDA = 1             ; RA1 pini SDA secildi
+,,,
+,,,   constant SCL_ANSEL = SCL     ; RA0/AN0 disable edilecek
+,,,   constant SDA_ANSEL = SDA     ; RA1/AN1 disable edilecek
+,,,
+,,,
+,,,
+,,,   constant SLAVE_VAR_BASE = 0x20 ; degiskenlerimiz bank0 daki
+,,,            0x20 adresinden itibaren                                                        sira
+,,,
+,,,
+,,,;---------------------------------------------------------;
+,,,#define S_IDLE          state_idle
+,,,#define S_WAIT_ADDR     state_wait_addr
+,,,#define S_WAIT_RW       state_wait_rw
+,,,#define S_ACK_WAIT      state_ack_wait
+,,,#define S_ACK_RUNNING   state_ack_running
+,,,#define S_ACK_DONE      state_ack_done
+,,,#define S_WAIT_COMMAND  state_wait_command
+,,,#define S_WAIT_DATA     state_wait_data
+,,,
+,,,;---------------------------------------------------------;
+,,,;Communication sirasinda kullanacagimiz tum 8 bitlik ;degiskenleri 0x21 adresinden itibaren siraliyoruz.
+,,,
+,,,STATE   equ     SLAVE_VAR_BASE ;  State machine deki state
+,,,
+,,,; the value (address or data) we are acculumating off the wire
+,,,ACCUM   equ     SLAVE_VAR_BASE + 0x01
+,,,
+,,,; what address should this node use?
+,,,; ### should we also have a compile-time constant?
+,,,ADDRESS equ     SLAVE_VAR_BASE + 0x02
+,,,
+,,,; Reading, or writing?
+,,,RW_MODE equ     SLAVE_VAR_BASE + 0x03
+,,,
+,,,; We need to save the (potential) DATA<7> value.
+,,,DATA7   equ     SLAVE_VAR_BASE + 0x04
+,,,
+,,,; How many bits are left to acquire from the bus?
+,,,BCOUNT  equ     SLAVE_VAR_BASE + 0x05
+,,,
+,,,;---------------------------------------------------------;
+,,,;Communication sirasinda kullanilacak makrolari burada ;tanimliyoruz
+,,,
+,,,; read the SDA port, placing 0 or 1 into W.
+,,,read_SDA: macro
+,,,        bank0
+,,,        movlw   1
+,,,        btfss   PORTA, SDA
+,,,        clrw
+,,,        endm
+,,,
+,,,; copy the SDA value to a register. REG is {0,1}
+,,,; ### we'll likely move to bit storage soon
+,,,mov_SDA: macro REG
+,,,        bank0
+,,,        clrf    REG
+,,,        btfsc   PORTA, SDA
+,,,        bsf     REG, 0
+,,,        endm
+,,,
+,,,
+,,,return_if_LOW: macro WHICH
+,,,        bank0
+,,,        btfss   PORTA, WHICH
+,,,        return
+,,,        endm
+,,,
+,,,return_if_HIGH: macro WHICH
+,,,        bank0
+,,,        btfsc   PORTA, WHICH
+,,,        return
+,,,        endm
+,,,
+,,,; Rotate the SDA value into ACCUM's LSB via the Carry bit.
+,,,accum_SDA: macro
+,,,        bank0
+,,,        clrc
+,,,        btfsc   PORTA, SDA
+,,,        setc
+,,,        rlf     ACCUM, F
+,,,        endm
+,,,
+,,,; Move to a new state, defined by magical PC offsets.
+,,,set_state: macro WHICH
+,,,        bank0
+,,,        movlw   WHICH - STATE_BASE
+,,,        movwf   STATE
+,,,        endm
+,,,
+,,,; Jump to WHERE if REG1 == REG2.NOT =jumpeq makrosu cagirilmadan ;reg1 ve reg2 nin bulundugu bank a geci
+,,,
+,,,jumpeq: macro REG1, REG2, WHERE
+,,,        movfw   REG1
+,,,        xorwf   REG2, W         ; could use SUBWF
+,,,        btfsc   STATUS, Z
+,,,        goto    WHERE
+,,,        endm
+,,,;---------------------------------------------------------;
+,,,;esas program burada basliyor, once disable comparator kismini
+,,,;da cagiralim cunku A0 ve A1 pinlerini kullaniyoruz
+,,,
+,,,
+00000024,,listen:,listen:
+,,,
+,,,        bank0
+00000024,1283,,                - bcf     STATUS, RP0
+00000025,1303,,                - bcf     STATUS, RP1
+00000026,0819,,        movfw   CMCON0
+00000027,3907,,        andlw   0x07            ; mask away the un-interesting
+00000028,1903 2832,,        bz      set111          ; it was 000. transition to 111.
+0000002A,3A07,,        xorlw   0x07
+0000002B,1903 2834,,        bz      done            ; it was 111. leave alone.
+0000002D,0819,,        movfw   CMCON0
+0000002E,3805,,        iorlw   0x05            ; enable bits 0,2
+0000002F,39FD,,        andlw   0xFD            ; disable bit 1
+00000030,0099,,        movwf   CMCON0          ; atomic change of config
+00000031,2834,,        goto    done
+,,,
+00000032,,set111:,set111:
+00000032,3007,,        movlw   0x07
+00000033,0499,,        iorwf   CMCON0, F       ; 000 -> 111
+,,,        ; FALLTHRU
+,,,
+00000034,,done:,done:
+,,,        ; FALLTHRU
+,,,
+,,,
+,,,;---------------------------------------------------------;
+,,,
+,,,        bank0
+00000034,1283,,                - bcf     STATUS, RP0
+00000035,1303,,                - bcf     STATUS, RP1
+,,,
+,,,
+00000036,3006,,        movlw   h'06'                   ;0x06 i2c adresimiz olsun
+00000037,00A2,,        movwf   ADDRESS
+,,,
+,,,
+,,,           bank1
+00000038,1303,,           - bcf  STATUS, RP1
+00000039,1683,,                - bsf     STATUS, RP0
+,,,
+0000003A,1405,,        bsf     TRISA, SCL              ;RA0 ve RA1 pinleri input oldu
+0000003B,1485,,        bsf     TRISA, SDA
+,,,
+0000003C,1011,,        bcf     ANSEL, SCL_ANSEL  ;RA0 ve RA1 analog select off
+0000003D,1091,,        bcf     ANSEL, SDA_ANSEL
+,,,
+,,,
+0000003E,,move_to_idle:,move_to_idle:
+0000003E,0196,,        clrf    IOCA                    ;tum IOCA iptal
+0000003F,1496,,           bsf     IOCA, SDA            ;RA1/SDA interrupt enable
+,,,
+00000040,,move_to_idle2:,move_to_idle2:
+00000040,1016,,        bcf     IOCA, SCL               ;RA0/SCL iptalden emin olalim
+,,,
+,,,        bank0                           ;TODO kaldirilabilr
+00000041,1283,,                - bcf     STATUS, RP0
+00000042,1303,,                - bcf     STATUS, RP1
+,,,        set_state S_IDLE
+,,,        - bank0
+00000043,1283,,                - bcf     STATUS, RP0
+00000044,1303,,                - bcf     STATUS, RP1
+00000045,3000,,        - movlw   state_idle - STATE_BASE
+00000046,00A0,,        - movwf   STATE
+,,,
+,,,        ; bank0 da ciktik
+00000047,0008,,        return
+,,,
+,,,;Burada baslatma rutini(slave) bitti. Bank0 da kaldik. Sda inter
+,,,;rupt enable Scl interrupt disable.
+,,,;---------------------------------------------------------;
+,,,
+,,,;bu noktadan itibaren herhangi bir return isr den cikip sonsuz
+,,,;main dongusune gider.
+,,,
+00000048,,interrupt_dispatch:,interrupt_dispatch:
+,,,        bank0
+00000048,1283,,                - bcf     STATUS, RP0
+00000049,1303,,                - bcf     STATUS, RP1
+,,,
+,,,
+,,,        ; NOTE: we assume this will not cross bank boundaries.
+0000004A,0820,,        movfw   STATE
+0000004B,0782,,        addwf   PCL, F          ; yay! variant GOTO!
+,,,
+0000004C,,STATE_BASE:,STATE_BASE:
+,,,
+0000004C,,state_idle:,state_idle:
+,,,
+,,,     ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+,,,return_if_LOW   SCL
+,,,        - bank0
+0000004C,1283,,                - bcf     STATUS, RP0
+0000004D,1303,,                - bcf     STATUS, RP1
+0000004E,1C05,,        - btfss   PORTA, SCL
+0000004F,0008,,        - return
+,,,
+,,,
+,,,       ; SCL yukaridayken SDA duserse bu start conditiondir.
+,,,        set_state S_WAIT_ADDR
+,,,        - bank0
+00000050,1283,,                - bcf     STATUS, RP0
+00000051,1303,,                - bcf     STATUS, RP1
+00000052,3010,,        - movlw   state_wait_addr - STATE_BASE
+00000053,00A0,,        - movwf   STATE
+,,,
+,,,        ;ACCUM degiskenini sifirlar ve BCOUNT degiskenini 7 yap
+00000054,01A1,,        clrf    ACCUM
+00000055,3007,,        movlw   0x07
+00000056,00A5,,        movwf   BCOUNT
+,,,
+,,,        ;SDA interrupt ini birakiyoruz SCL ile senkron olacagiz
+,,,        bank1
+00000057,1303,,           - bcf  STATUS, RP1
+00000058,1683,,                - bsf     STATUS, RP0
+00000059,1416,,        bsf     IOCA, SCL
+0000005A,1096,,        bcf     IOCA, SDA
+,,,
+,,,
+0000005B,0008,,        return  ;ornegin bu return bir sonraki SCL interrupt ini
+,,,                        ; beklemek icin sonsuz main rutine geri doner.
+,,,
+,,,
+,,,
+0000005C,,state_wait_addr:,state_wait_addr:
+,,,
+,,,
+,,,                ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+,,,        return_if_LOW   SCL
+,,,        - bank0
+0000005C,1283,,                - bcf     STATUS, RP0
+0000005D,1303,,                - bcf     STATUS, RP1
+0000005E,1C05,,        - btfss   PORTA, SCL
+0000005F,0008,,        - return
+,,,
+,,,        accum_SDA       ;bank0 a gecip SDA dan bir bit okuyup                                   ;ACCUM d
+,,,        - bank0
+00000060,1283,,                - bcf     STATUS, RP0
+00000061,1303,,                - bcf     STATUS, RP1
+00000062,1003,,        - clrc
+00000063,1885,,        - btfsc   PORTA, SDA
+00000064,1403,,        - setc
+00000065,0DA1,,        - rlf     ACCUM, F
+,,,
+00000066,0BA5,,        decfsz  BCOUNT, F
+00000067,2869,,        goto    got_address ;7biti de aldiysak got_address e git
+,,,
+00000068,0008,,        return
+,,,
+00000069,,got_address:,got_address:
+,,,                ;alinan adres dogruya rw bekle, degilse idle a don
+,,,        jumpeq  ADDRESS, ACCUM, move_to_wait_rw
+00000069,0822,,        - movfw   ADDRESS
+0000006A,0621,,        - xorwf   ACCUM, W        ; could use SUBWF
+0000006B,1903,,        - btfsc   STATUS, Z
+0000006C,2871,,        - goto    move_to_wait_rw
+0000006D,2871,,        goto move_to_wait_rw
+,,,
+,,,                ;adres bizim degil, idle a gec SDA interrupt                          ;enable,SCL disabl
+,,,           bank1
+0000006E,1303,,           - bcf  STATUS, RP1
+0000006F,1683,,                - bsf     STATUS, RP0
+00000070,283E,,        goto    move_to_idle
+,,,
+00000071,,move_to_wait_rw:,move_to_wait_rw:
+,,,        set_state S_WAIT_RW
+,,,        - bank0
+00000071,1283,,                - bcf     STATUS, RP0
+00000072,1303,,                - bcf     STATUS, RP1
+00000073,302A,,        - movlw   state_wait_rw - STATE_BASE
+00000074,00A0,,        - movwf   STATE
+00000075,0008,,        return
+,,,
+,,,
+00000076,,state_wait_rw:,state_wait_rw:
+,,,
+,,,
+,,,        ;SCL nin yukselen kenarlarinda ornekleme yapacagiz.
+,,,        return_if_LOW   SCL
+,,,        - bank0
+00000076,1283,,                - bcf     STATUS, RP0
+00000077,1303,,                - bcf     STATUS, RP1
+00000078,1C05,,        - btfss   PORTA, SCL
+00000079,0008,,        - return
+,,,
+,,,        ; RW_MODE un ilk bitine SDA degerini yaziyoruz.Aslinda             ;burada I2c read mi yoksa wri
+,,,        mov_SDA RW_MODE
+,,,        - bank0
+0000007A,1283,,                - bcf     STATUS, RP0
+0000007B,1303,,                - bcf     STATUS, RP1
+0000007C,01A3,,        - clrf    RW_MODE
+0000007D,1885,,        - btfsc   PORTA, SDA
+0000007E,1423,,        - bsf     RW_MODE, 0
+,,,
+0000007F,0008,,        return
+,,,
+00000080,,move_to_ack_wait:,move_to_ack_wait:
+,,,
+,,,        set_state S_ACK_WAIT
+,,,        - bank0
+00000080,1283,,                - bcf     STATUS, RP0
+00000081,1303,,                - bcf     STATUS, RP1
+00000082,303D,,        - movlw   state_ack_wait - STATE_BASE
+00000083,00A0,,        - movwf   STATE
+,,,
+,,,        ; SDA loe yapip dijital out set ettik
+00000084,1085,,        bcf     PORTA, SDA
+,,,        bank1
+00000085,1303,,           - bcf  STATUS, RP1
+00000086,1683,,                - bsf     STATUS, RP0
+00000087,1085,,        bcf     TRISA, SDA
+,,,
+,,,        ;bank 1 de geri donuyoruz dikkat!
+00000088,0008,,           return
+,,,
+,,,
+00000089,,state_ack_wait:,state_ack_wait:
+,,,        ;ACK master tarafindan alinsin diye SDA yi lowa cektik
+,,,           ; bekliyoruz
+,,,        set_state S_ACK_RUNNING
+,,,        - bank0
+00000089,1283,,                - bcf     STATUS, RP0
+0000008A,1303,,                - bcf     STATUS, RP1
+0000008B,3042,,        - movlw   state_ack_running - STATE_BASE
+0000008C,00A0,,        - movwf   STATE
+,,,
+0000008D,0008,,        return
+,,,
+,,,
+0000008E,,state_ack_running:,state_ack_running:
+,,,
+,,,        ;SCL dusukken ACK orneklenecek beklemeye devam
+,,,        return_if_HIGH  SCL
+,,,        - bank0
+0000008E,1283,,                - bcf     STATUS, RP0
+0000008F,1303,,                - bcf     STATUS, RP1
+00000090,1805,,        - btfsc   PORTA, SCL
+00000091,0008,,        - return
+,,,
+,,,        ; siradakli yukselen SCL interrupti ile ACK done dir
+,,,        set_state S_ACK_DONE
+,,,        - bank0
+00000092,1283,,                - bcf     STATUS, RP0
+00000093,1303,,                - bcf     STATUS, RP1
+00000094,304E,,        - movlw   state_ack_done - STATE_BASE
+00000095,00A0,,        - movwf   STATE
+,,,
+,,,        ; SDA yi tekrar input moduna getirelim
+,,,        bank1
+00000096,1303,,           - bcf  STATUS, RP1
+00000097,1683,,                - bsf     STATUS, RP0
+00000098,1485,,        bsf     TRISA, SDA
+,,,
+00000099,0008,,        return ; bank 1 de geri donuyoruz dikkat!
+,,,
+,,,
+0000009A,,state_ack_done:,state_ack_done:
+,,,        ;ilk yukselen SCL kenarunda DATA7 bitini al
+,,,        mov_SDA DATA7
+,,,        - bank0
+0000009A,1283,,                - bcf     STATUS, RP0
+0000009B,1303,,                - bcf     STATUS, RP1
+0000009C,01A4,,        - clrf    DATA7
+0000009D,1885,,        - btfsc   PORTA, SDA
+0000009E,1424,,        - bsf     DATA7, 0
+,,,
+,,,        set_state S_WAIT_COMMAND
+,,,        - bank0
+0000009F,1283,,                - bcf     STATUS, RP0
+000000A0,1303,,                - bcf     STATUS, RP1
+000000A1,305B,,        - movlw   state_wait_command - STATE_BASE
+000000A2,00A0,,        - movwf   STATE
+,,,
+,,,        ; SDA interruptini da enable edip restart/stop biti                ;gelecek mi diye bakalim
+,,,        bank1
+000000A3,1303,,           - bcf  STATUS, RP1
+000000A4,1683,,                - bsf     STATUS, RP0
+000000A5,1496,,        bsf     IOCA, SDA
+,,,
+000000A6,0008,,        return ; bank 1 de donuyoruz dikkat
+,,,
+,,,
+000000A7,,state_wait_command:,state_wait_command:
+,,,
+,,,        ;SCL en son yukselen kenardaydi. Burda degerine bakip SDA       ;mi SCL interrupt mi oldugunu ke
+,,,
+000000A7,1C05,,        btfss   PORTA, SCL
+000000A8,28B3,,        goto    data_command
+,,,
+,,,        ;SDA interrupt sa start stop conditiona bakalim
+000000A9,1C85,,        btfss   PORTA, SDA
+000000AA,28B0,,        goto    stop_condition
+,,,
+,,,        set_state S_WAIT_ADDR
+,,,        - bank0
+000000AB,1283,,                - bcf     STATUS, RP0
+000000AC,1303,,                - bcf     STATUS, RP1
+000000AD,3010,,        - movlw   state_wait_addr - STATE_BASE
+000000AE,00A0,,        - movwf   STATE
+,,,
+000000AF,0008,,        return
+,,,
+000000B0,,stop_condition:,stop_condition:
+,,,        bank1
+000000B0,1303,,           - bcf  STATUS, RP1
+000000B1,1683,,                - bsf     STATUS, RP0
+000000B2,2840,,        goto    move_to_idle2
+,,,
+000000B3,,data_command:,data_command:
+,,,
+000000B3,0824,,        movfw   DATA7                   ;DATA7 de ilk bitimiz vardi
+000000B4,00A1,,        movwf   ACCUM                   ;ilk biti ACCUM a aldik
+000000B5,3007,,        movlw   0x07            ;BCOUNT a 7 yazalim loop icin
+000000B6,00A5,,        movwf   BCOUNT
+,,,
+,,,        set_state S_WAIT_DATA
+,,,        - bank0
+000000B7,1283,,                - bcf     STATUS, RP0
+000000B8,1303,,                - bcf     STATUS, RP1
+000000B9,3073,,        - movlw   state_wait_data - STATE_BASE
+000000BA,00A0,,        - movwf   STATE
+,,,
+,,,
+,,,        bank1
+000000BB,1303,,           - bcf  STATUS, RP1
+000000BC,1683,,                - bsf     STATUS, RP0
+000000BD,1096,,        bcf     IOCA, SDA
+,,,
+000000BE,0008,,        return          ;bank1 de cikiyoruz dikkat!
+,,,
+,,,
+000000BF,,state_wait_data:,state_wait_data:
+,,,       ;SCL nin dusen kenarlarinda ornekleme yapmayalim
+,,,        return_if_LOW   SCL
+,,,        - bank0
+000000BF,1283,,                - bcf     STATUS, RP0
+000000C0,1303,,                - bcf     STATUS, RP1
+000000C1,1C05,,        - btfss   PORTA, SCL
+000000C2,0008,,        - return
+,,,
+,,,        ; SDA dan bir bit al ve bir sonraki interrup ti bekle
+,,,        accum_SDA
+,,,        - bank0
+000000C3,1283,,                - bcf     STATUS, RP0
+000000C4,1303,,                - bcf     STATUS, RP1
+000000C5,1003,,        - clrc
+000000C6,1885,,        - btfsc   PORTA, SDA
+000000C7,1403,,        - setc
+000000C8,0DA1,,        - rlf     ACCUM, F
+,,,
+,,,        ;BCOUNT degeri 7 den 0 a dusene kadar SCL nin yukselen
+,,,           ;kenarlarinda SDA dan data alaim bitince ->got_data
+000000C9,0BA5,,           decfsz  BCOUNT, F
+000000CA,28CC,,        goto    got_data
+,,,
+,,,        ; We don't have all the bits, so wait for more...
+000000CB,0008,,        return
+,,,
+000000CC,,got_data:,got_data:
+,,,                ;artik datamiz ACCUM un icinde
+000000CC,0821,,           movf    ACCUM,0 ;ACCUM registerinin icerigi W ya yaz
+000000CD,0087,,           movwf   PORTC   ;Working register C portuna yaz
+,,,
+,,,
+000000CE,2880,,        goto    move_to_ack_wait
+,,,
+,,,
+,,,; ### need routines to write data back to the master. obviously, this
+,,,; ### will be based on how we handle the incoming data processing.
+,,,
+,,,
+,,, end

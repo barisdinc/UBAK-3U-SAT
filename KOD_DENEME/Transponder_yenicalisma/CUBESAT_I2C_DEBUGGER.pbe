@@ -1,0 +1,22 @@
+ERROR
+Error at Line [101]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [109]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [112]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [113]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [117]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	*** Context Save must always be issued at the start of an interrupt handler if Context Restore is used! ***
+Error at Line [121]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [122]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [124]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' VALUE ' not found! ***
+Error at Line [125]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' VALUE ' not found! ***
+Error at Line [126]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [136]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' VALUE ' not found! ***
+Error at Line [138]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' TI2C ' not found! ***
+Error at Line [139]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' I ' not found! ***
+Error at Line [140]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' I ' not found! ***
+Error at Line [141]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' I ' not found! ***
+Error at Line [141]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' VALUE ' not found! ***
+Error at Line [193]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' TICKS ' not found! ***
+Error at Line [231]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' I2CBUGTIMERFLAG ' not found! ***
+Error at Line [238]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' REGISTER ' not found! ***
+Error at Line [240]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' I2CBUGTIMERFLAG ' not found! ***
+Error at Line [243]	In file [C:\PROJELER\TRANSPONDER_YENICALISMA\CUBESAT_I2C_DEBUGGER.BAS]	***  Variable ' I2CBUGTIMERFLAG ' not found! ***

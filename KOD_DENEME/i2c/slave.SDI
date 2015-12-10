@@ -1,0 +1,423 @@
+,,,;i2c asm source kodudur
+,,,
+,,,
+,,,
+00000000,,slave:,slave:
+,,,
+,,,;---------------------------------------------------------;
+,,,
+,,,   constant SCL = 0             ; RA0 pini SCL secildi
+,,,   constant SDA = 1             ; RA1 pini SDA secildi
+,,,
+,,,   constant SCL_ANSEL = SCL     ; RA0/AN0 disable edilecek
+,,,   constant SDA_ANSEL = SDA     ; RA1/AN1 disable edilecek
+,,,
+,,,
+,,,
+,,,   constant SLAVE_VAR_BASE = 0x20 ; degiskenlerimiz bank0 daki
+,,,            0x20 adresinden itibaren                                                        sira
+,,,
+,,,
+,,,;---------------------------------------------------------;
+,,,#define S_IDLE          state_idle
+,,,#define S_WAIT_ADDR     state_wait_addr
+,,,#define S_WAIT_RW       state_wait_rw
+,,,#define S_ACK_WAIT      state_ack_wait
+,,,#define S_ACK_RUNNING   state_ack_running
+,,,#define S_ACK_DONE      state_ack_done
+,,,#define S_WAIT_COMMAND  state_wait_command
+,,,#define S_WAIT_DATA     state_wait_data
+,,,
+,,,;---------------------------------------------------------;
+,,,;Communication sirasinda kullanacagimiz tum 8 bitlik ;degiskenleri 0x21 adresinden itibaren siraliyoruz.
+,,,
+,,,STATE   equ     SLAVE_VAR_BASE ;  State machine deki state
+,,,
+,,,; the value (address or data) we are acculumating off the wire
+,,,ACCUM   equ     SLAVE_VAR_BASE + 0x01
+,,,
+,,,; what address should this node use?
+,,,; ### should we also have a compile-time constant?
+,,,ADDRESS equ     SLAVE_VAR_BASE + 0x02
+,,,
+,,,; Reading, or writing?
+,,,RW_MODE equ     SLAVE_VAR_BASE + 0x03
+,,,
+,,,; We need to save the (potential) DATA<7> value.
+,,,DATA7   equ     SLAVE_VAR_BASE + 0x04
+,,,
+,,,; How many bits are left to acquire from the bus?
+,,,BCOUNT  equ     SLAVE_VAR_BASE + 0x05
+,,,
+,,,;---------------------------------------------------------;
+,,,;Communication sirasinda kullanilacak makrolari burada ;tanimliyoruz
+,,,
+,,,; read the SDA port, placing 0 or 1 into W.
+,,,read_SDA: macro
+,,,        bank0
+,,,        movlw   1
+,,,        btfss   PORTA, SDA
+,,,        clrw
+,,,        endm
+,,,
+,,,; copy the SDA value to a register. REG is {0,1}
+,,,; ### we'll likely move to bit storage soon
+,,,mov_SDA: macro REG
+,,,        bank0
+,,,        clrf    REG
+,,,        btfsc   PORTA, SDA
+,,,        bsf     REG, 0
+,,,        endm
+,,,
+,,,
+,,,return_if_LOW: macro WHICH
+,,,        bank0
+,,,        btfss   PORTA, WHICH
+,,,        return
+,,,        endm
+,,,
+,,,return_if_HIGH: macro WHICH
+,,,        bank0
+,,,        btfsc   PORTA, WHICH
+,,,        return
+,,,        endm
+,,,
+,,,; Rotate the SDA value into ACCUM's LSB via the Carry bit.
+,,,accum_SDA: macro
+,,,        bank0
+,,,        clrc
+,,,        btfsc   PORTA, SDA
+,,,        setc
+,,,        rlf     ACCUM, F
+,,,        endm
+,,,
+,,,; Move to a new state, defined by magical PC offsets.
+,,,set_state: macro WHICH
+,,,        bank0
+,,,        movlw   WHICH - STATE_BASE
+,,,        movwf   STATE
+,,,        endm
+,,,
+,,,; Jump to WHERE if REG1 == REG2.NOT =jumpeq makrosu cagirilmadan ;reg1 ve reg2 nin bulundugu bank a geci
+,,,
+,,,jumpeq: macro REG1, REG2, WHERE
+,,,        movfw   REG1
+,,,        xorwf   REG2, W         ; could use SUBWF
+,,,        btfsc   STATUS, Z
+,,,        goto    WHERE
+,,,        endm
+,,,;---------------------------------------------------------;
+,,,;esas program burada basliyor, once disable comparator kismini
+,,,;da cagiralim cunku A0 ve A1 pinlerini kullaniyoruz
+,,,
+,,,
+00000000,,listen:,listen:
+,,,
+00000000,,,        bank0
+00000000,,,        movfw   CMCON0
+00000000,,,        andlw   0x07            ; mask away the un-interesting
+00000000,,,        bz      set111          ; it was 000. transition to 111.
+00000000,,,        xorlw   0x07
+00000000,,,        bz      done            ; it was 111. leave alone.
+00000000,,,        movfw   CMCON0
+00000000,,,        iorlw   0x05            ; enable bits 0,2
+00000000,,,        andlw   0xFD            ; disable bit 1
+00000000,,,        movwf   CMCON0          ; atomic change of config
+00000000,,,        goto    done
+,,,
+00000000,,set111:,set111:
+00000000,,,        movlw   0x07
+00000000,,,        iorwf   CMCON0, F       ; 000 -> 111
+,,,        ; FALLTHRU
+,,,
+00000000,,done:,done:
+,,,        ; FALLTHRU
+,,,
+,,,
+,,,;---------------------------------------------------------;
+,,,
+00000000,,,        bank0
+,,,
+,,,
+,,,        movlw   h'06'                   ;0x06 i2c adresimiz olsun
+,,,        movwf   ADDRESS
+,,,
+,,,
+00000000,,,           bank1
+,,,
+,,,        bsf     TRISA, SCL              ;RA0 ve RA1 pinleri input oldu
+,,,        bsf     TRISA, SDA
+,,,
+,,,        bcf     ANSEL, SCL_ANSEL  ;RA0 ve RA1 analog select off
+,,,        bcf     ANSEL, SDA_ANSEL
+,,,
+,,,
+00000000,,move_to_idle:,move_to_idle:
+00000000,,,        clrf    IOCA                    ;tum IOCA iptal
+00000000,,,           bsf     IOCA, SDA            ;RA1/SDA interrupt enable
+,,,
+00000000,,move_to_idle2:,move_to_idle2:
+00000000,,,        bcf     IOCA, SCL               ;RA0/SCL iptalden emin olalim
+,,,
+00000000,,,        bank0                           ;TODO kaldirilabilr
+,,,        set_state S_IDLE
+00000000,,,        - bank0
+00000000,,,        - movlw   state_idle - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+,,,        ; bank0 da ciktik
+00000000,,,        return
+,,,
+,,,;Burada baslatma rutini(slave) bitti. Bank0 da kaldik. Sda inter
+,,,;rupt enable Scl interrupt disable.
+,,,;---------------------------------------------------------;
+,,,
+,,,;bu noktadan itibaren herhangi bir return isr den cikip sonsuz
+,,,;main dongusune gider.
+,,,
+00000000,,interrupt_dispatch:,interrupt_dispatch:
+00000000,,,        bank0
+,,,
+,,,
+,,,        ; NOTE: we assume this will not cross bank boundaries.
+,,,        movfw   STATE
+,,,        addwf   PCL, F          ; yay! variant GOTO!
+,,,
+00000000,,STATE_BASE:,STATE_BASE:
+,,,
+00000000,,state_idle:,state_idle:
+,,,
+,,,     ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+,,,return_if_LOW   SCL
+00000000,,,        - bank0
+00000000,,,        - btfss   PORTA, SCL
+00000000,,,        - return
+,,,
+,,,
+,,,       ; SCL yukaridayken SDA duserse bu start conditiondir.
+,,,        set_state S_WAIT_ADDR
+00000000,,,        - bank0
+00000000,,,        - movlw   state_wait_addr - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+,,,        ;ACCUM degiskenini sifirlar ve BCOUNT degiskenini 7 yap
+,,,        clrf    ACCUM
+,,,        movlw   0x07
+,,,        movwf   BCOUNT
+,,,
+,,,        ;SDA interrupt ini birakiyoruz SCL ile senkron olacagiz
+00000000,,,        bank1
+00000000,,,        bsf     IOCA, SCL
+00000000,,,        bcf     IOCA, SDA
+,,,
+,,,
+00000000,,,        return  ;ornegin bu return bir sonraki SCL interrupt ini
+,,,                        ; beklemek icin sonsuz main rutine geri doner.
+,,,
+,,,
+,,,
+00000000,,state_wait_addr:,state_wait_addr:
+,,,
+,,,
+,,,                ;SCL nin yukselen kenarlarinda ornekleme yapacagiz
+,,,        return_if_LOW   SCL
+00000000,,,        - bank0
+00000000,,,        - btfss   PORTA, SCL
+00000000,,,        - return
+,,,
+,,,        accum_SDA       ;bank0 a gecip SDA dan bir bit okuyup                                   ;ACCUM d
+00000000,,,        - bank0
+00000000,,,        - clrc
+00000000,,,        - btfsc   PORTA, SDA
+00000000,,,        - setc
+00000000,,,        - rlf     ACCUM, F
+,,,
+,,,        decfsz  BCOUNT, F
+,,,        goto    got_address ;7biti de aldiysak got_address e git
+,,,
+00000000,,,        return
+,,,
+00000000,,got_address:,got_address:
+,,,                ;alinan adres dogruya rw bekle, degilse idle a don
+,,,        jumpeq  ADDRESS, ACCUM, move_to_wait_rw
+,,,        movfw   ADDRESS
+,,,        xorwf   ACCUM, W        ; could use SUBWF
+,,,        btfsc   STATUS, Z
+,,,        goto    move_to_wait_rw
+,,,        goto move_to_wait_rw
+,,,
+,,,                ;adres bizim degil, idle a gec SDA interrupt                          ;enable,SCL disabl
+00000000,,,           bank1
+00000000,,,        goto    move_to_idle
+,,,
+00000000,,move_to_wait_rw:,move_to_wait_rw:
+,,,        set_state S_WAIT_RW
+00000000,,,        - bank0
+00000000,,,        - movlw   state_wait_rw - STATE_BASE
+00000000,,,        - movwf   STATE
+00000000,,,        return
+,,,
+,,,
+00000000,,state_wait_rw:,state_wait_rw:
+,,,
+,,,
+,,,        ;SCL nin yukselen kenarlarinda ornekleme yapacagiz.
+,,,        return_if_LOW   SCL
+00000000,,,        - bank0
+00000000,,,        - btfss   PORTA, SCL
+00000000,,,        - return
+,,,
+,,,        ; RW_MODE un ilk bitine SDA degerini yaziyoruz.Aslinda             ;burada I2c read mi yoksa wri
+,,,        mov_SDA RW_MODE
+00000000,,,        - bank0
+00000000,,,        - clrf    RW_MODE
+00000000,,,        - btfsc   PORTA, SDA
+00000000,,,        - bsf     RW_MODE, 0
+,,,
+00000000,,,        return
+,,,
+00000000,,move_to_ack_wait:,move_to_ack_wait:
+,,,
+,,,        set_state S_ACK_WAIT
+00000000,,,        - bank0
+00000000,,,        - movlw   state_ack_wait - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+,,,        ; SDA loe yapip dijital out set ettik
+,,,        bcf     PORTA, SDA
+00000000,,,        bank1
+00000000,,,        bcf     TRISA, SDA
+,,,
+,,,        ;bank 1 de geri donuyoruz dikkat!
+00000000,,,           return
+,,,
+,,,
+00000000,,state_ack_wait:,state_ack_wait:
+,,,        ;ACK master tarafindan alinsin diye SDA yi lowa cektik
+,,,           ; bekliyoruz
+,,,        set_state S_ACK_RUNNING
+00000000,,,        - bank0
+00000000,,,        - movlw   state_ack_running - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+00000000,,,        return
+,,,
+,,,
+00000000,,state_ack_running:,state_ack_running:
+,,,
+,,,        ;SCL dusukken ACK orneklenecek beklemeye devam
+,,,        return_if_HIGH  SCL
+00000000,,,        - bank0
+00000000,,,        - btfsc   PORTA, SCL
+00000000,,,        - return
+,,,
+,,,        ; siradakli yukselen SCL interrupti ile ACK done dir
+,,,        set_state S_ACK_DONE
+00000000,,,        - bank0
+00000000,,,        - movlw   state_ack_done - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+,,,        ; SDA yi tekrar input moduna getirelim
+00000000,,,        bank1
+00000000,,,        bsf     TRISA, SDA
+,,,
+00000000,,,        return ; bank 1 de geri donuyoruz dikkat!
+,,,
+,,,
+00000000,,state_ack_done:,state_ack_done:
+,,,        ;ilk yukselen SCL kenarunda DATA7 bitini al
+,,,        mov_SDA DATA7
+00000000,,,        - bank0
+00000000,,,        - clrf    DATA7
+00000000,,,        - btfsc   PORTA, SDA
+00000000,,,        - bsf     DATA7, 0
+,,,
+,,,        set_state S_WAIT_COMMAND
+00000000,,,        - bank0
+00000000,,,        - movlw   state_wait_command - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+,,,        ; SDA interruptini da enable edip restart/stop biti                ;gelecek mi diye bakalim
+00000000,,,        bank1
+00000000,,,        bsf     IOCA, SDA
+,,,
+00000000,,,        return ; bank 1 de donuyoruz dikkat
+,,,
+,,,
+00000000,,state_wait_command:,state_wait_command:
+,,,
+,,,        ;SCL en son yukselen kenardaydi. Burda degerine bakip SDA       ;mi SCL interrupt mi oldugunu ke
+,,,
+,,,        btfss   PORTA, SCL
+,,,        goto    data_command
+,,,
+,,,        ;SDA interrupt sa start stop conditiona bakalim
+,,,        btfss   PORTA, SDA
+,,,        goto    stop_condition
+,,,
+,,,        set_state S_WAIT_ADDR
+00000000,,,        - bank0
+00000000,,,        - movlw   state_wait_addr - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+00000000,,,        return
+,,,
+00000000,,stop_condition:,stop_condition:
+00000000,,,        bank1
+00000000,,,        goto    move_to_idle2
+,,,
+00000000,,data_command:,data_command:
+,,,
+,,,        movfw   DATA7                   ;DATA7 de ilk bitimiz vardi
+,,,        movwf   ACCUM                   ;ilk biti ACCUM a aldik
+,,,        movlw   0x07            ;BCOUNT a 7 yazalim loop icin
+,,,        movwf   BCOUNT
+,,,
+,,,        set_state S_WAIT_DATA
+00000000,,,        - bank0
+00000000,,,        - movlw   state_wait_data - STATE_BASE
+00000000,,,        - movwf   STATE
+,,,
+,,,
+00000000,,,        bank1
+00000000,,,        bcf     IOCA, SDA
+,,,
+00000000,,,        return          ;bank1 de cikiyoruz dikkat!
+,,,
+,,,
+00000000,,state_wait_data:,state_wait_data:
+,,,       ;SCL nin dusen kenarlarinda ornekleme yapmayalim
+,,,        return_if_LOW   SCL
+00000000,,,        - bank0
+00000000,,,        - btfss   PORTA, SCL
+00000000,,,        - return
+,,,
+,,,        ; SDA dan bir bit al ve bir sonraki interrup ti bekle
+,,,        accum_SDA
+00000000,,,        - bank0
+00000000,,,        - clrc
+00000000,,,        - btfsc   PORTA, SDA
+00000000,,,        - setc
+00000000,,,        - rlf     ACCUM, F
+,,,
+,,,        ;BCOUNT degeri 7 den 0 a dusene kadar SCL nin yukselen
+,,,           ;kenarlarinda SDA dan data alaim bitince ->got_data
+,,,           decfsz  BCOUNT, F
+,,,        goto    got_data
+,,,
+,,,        ; We don't have all the bits, so wait for more...
+00000000,,,        return
+,,,
+00000000,,got_data:,got_data:
+,,,                ;artik datamiz ACCUM un icinde
+,,,           movf    ACCUM,0 ;ACCUM registerinin icerigi W ya yaz
+,,,           movwf   PORTC   ;Working register C portuna yaz
+,,,
+,,,
+,,,        goto    move_to_ack_wait
+,,,
+,,,
+,,,; ### need routines to write data back to the master. obviously, this
+,,,; ### will be based on how we handle the incoming data processing.
+,,,
+,,,
